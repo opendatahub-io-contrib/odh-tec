@@ -1,0 +1,160 @@
+html,
+body,
+#root {
+  height: 100%;
+}
+
+.pf-v5-c-content {
+  --pf-v5-c-content--small--Color: red; /* changes all <small> color to red */
+  --pf-v5-c-content--blockquote--BorderLeftColor: purple; /* changes all <blockquote> left border color to purple */
+  --pf-v5-c-content--hr--BackgroundColor: lemonchiffon; /* changes a <hr> color to lemonchiffon */
+}
+
+.img-format { /*Default image formatting*/
+  margin: 5px; 
+  border: 2px solid darkgray;
+}
+
+.align-right {
+  text-align: right;
+}
+
+.simple-padding {
+  padding: 5px;
+}
+
+.display-linebreak {
+  white-space: pre-line;
+}
+
+.avatar {
+  background-color: #ebebeb
+}
+
+.disabled-link {
+  cursor: not-allowed;
+  color: grey;
+}
+
+.title-text {
+  padding-left: 10px;
+}
+
+.bucket-select {
+  width: 500px;
+}
+
+.version-language-select {
+  width: 100px;
+}
+
+.width-100 {
+  width: 100% !important
+} 
+
+.height-100 {
+  height: 100% !important
+} 
+
+.colored-item-blue {
+  color: #056ac7;
+}
+
+.padding-bottom-25 {
+  padding-bottom: 25px;
+}
+
+.padding-top-25 {
+  padding-top: 25px;
+}
+
+.buckets-list-filter-search {
+  width: 400px;
+}
+
+.bucket-row {
+  padding: 50px;
+}
+
+.bucket-column {
+  padding-block-start: 6px !important;
+  padding-block-end: 6px !important;
+}
+
+.bucket-modal {
+  width: 50%;
+}
+
+.buckets-list {
+  height: 100%;
+}
+
+.breadcrumb-button {
+  padding-left: 0px;
+  padding-right: 0px;
+}
+
+.folder-icon {
+  padding-left: 0px;
+  padding-right: 10px;
+}
+
+.file-icon {
+  padding-left: 0px;
+  padding-right: 10px;
+}
+
+.button-folder-link {
+  padding-left: 0px;
+}
+
+.button-file-control {
+  margin-right: 5px;
+}
+
+.file-viewer-modal {
+  width: 70%;
+}
+
+.file-list-notes {
+  margin-bottom: 0px !important;
+}
+
+.file-folder-buttons {
+  margin-right: 6px !important;
+}
+
+.upload-bars {
+  margin-top: 10px;
+}
+
+.form-settings {
+  width: 25%;
+}
+
+.form-settings-long {
+  width: 50%;
+}
+
+.form-settings-submit {
+  width: 250px;
+}
+
+.form-settings-slider {
+  width: 250px;
+}
+
+.settings-form {
+  padding-top: 10px;
+}
+
+.tab-logo {
+  width: 20px;
+  height: 20px;
+}
+
+.button-logo {
+  width: 16px;
+  height: 16px;
+  padding-top: 1px;
+}

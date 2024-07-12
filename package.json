@@ -1,0 +1,55 @@
+{
+  "name": "odh-tec",
+  "version": "1.0.0",
+  "description": "Open Data Hub Tools & Extensions Companion",
+  "author": "",
+  "license": "MIT",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/opendatahub-io-contrib/odh-tec.git"
+  },
+  "homepage": "",
+  "bugs": {
+    "url": "https://github.com/opendatahub-io-contrib/odh-tec/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "build": "run-p -l build:*",
+    "build:backend": "cd ./backend && npm run build",
+    "build:frontend": "cd ./frontend && npm run build",
+    "dev": "run-p -l dev:*",
+    "dev:backend": "cd ./backend && npm run start:dev",
+    "dev:frontend": "cd ./frontend && npm run start:dev",
+    "format": "prettier --write \"backend/**/*.ts\" \"frontend/**/*.ts\" \"frontend/**/*.tsx\"",
+    "make": "make",
+    "make:build": "make build",
+    "make:deploy": "make deploy",
+    "make:login": "make login",
+    "make:undeploy": "make undeploy",
+    "make:push": "make push",
+    "postinstall": "run-p postinstall:*",
+    "postinstall:backend": "cd ./backend && npm install",
+    "postinstall:frontend": "cd ./frontend && npm install",
+    "start": "run-p start:*",
+    "start:backend": "cd ./backend && npm start",
+    "start:frontend": "echo \"...available at ./frontend/public\"",
+    "test": "run-s test:backend test:frontend",
+    "test:backend": "cd ./backend && npm run test",
+    "test:frontend": "cd ./frontend && npm run test",
+    "test:frontend:coverage": "cd ./frontend && npm run test:coverage",
+    "test:cypress-ci": "cd ./frontend && npm run test:cypress-ci -- ",
+    "test:unit": "cd ./frontend && npm run test:unit",
+    "test:fix": "run-s test:fix-backend test:fix-frontend",
+    "test:fix-backend": "cd ./backend && npm run test:fix",
+    "test:fix-frontend": "cd ./frontend && npm run test:fix"
+  },
+  "dependencies": {
+    "dotenv": "^8.2.0",
+    "dotenv-expand": "^5.1.0",
+    "npm-run-all": "^4.1.5",
+    "prettier": "^2.2.1"
+  }
+}

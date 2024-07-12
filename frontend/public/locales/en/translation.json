@@ -1,0 +1,11 @@
+{
+  "app_title": "Open Data Hub Tools & Extensions Companion.",
+  "app_header": {
+    "powered_by": "Powered by",
+    "help": {
+      "header": "Information",
+      "body": "Open Data Hub Tools & Extensions Companion.",
+      "footer": "Source code and documentation available at https://github.com/opendatahub-io-contrib/odh-tec"
+    }
+  }
+}

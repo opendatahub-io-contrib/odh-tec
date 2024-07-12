@@ -1,0 +1,10 @@
+.git
+.vscode
+.gitignore
+.docs
+**/.env
+**/node_modules
+**/logs
+**/dist
+**/__tests__
+Containerfile
