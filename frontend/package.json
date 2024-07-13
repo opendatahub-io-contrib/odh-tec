@@ -1,6 +1,6 @@
 {
   "name": "odh-tec-frontend",
-  "version": "1.0.0",
+  "version": "1.1.1",
   "description": "Frontend for the Open Data Hub Tools & Extensions Companion.",
   "repository": {
     "type": "git",
@@ -99,7 +99,7 @@
     "sirv-cli": "^2.0.2",
     "@mui/icons-material": "^5.15.0",
     "@mui/material": "^5.14.20",
-    "recharts": "^2.10.3",
+    "recharts": "2.13.0-alpha.1",
     "@emotion/react": "^11.11.1",
     "@emotion/styled": "^11.11.0",
     "@fontsource/roboto": "^5.0.8"

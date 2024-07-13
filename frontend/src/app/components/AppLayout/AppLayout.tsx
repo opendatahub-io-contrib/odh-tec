@@ -492,7 +492,6 @@ const AppLayout: React.FunctionComponent<IAppLayout> = ({ children }) => {
   React.useEffect(() => {
     axios.get(`${config.backend_api_url}/disclaimer`)
       .then((response) => {
-        console.log(response);
         if (response.data.disclaimer.status === 'accepted') {
           console.log('Disclaimer already accepted');
         } else {

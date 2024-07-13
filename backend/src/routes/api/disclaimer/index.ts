@@ -1,5 +1,6 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import fs from 'fs';
+import path from 'path';
 
 interface OdhTecConfig {
   disclaimer?: {
@@ -53,6 +54,7 @@ export default async (fastify: FastifyInstance): Promise<void> => {
     odhTecConfig.disclaimer = disclaimer;
 
     try {
+      await fs.promises.mkdir(path.dirname(configFilePath), { recursive: true });
       await fs.promises.writeFile(configFilePath, JSON.stringify(odhTecConfig, null, 2));
       reply.send({ message: 'Disclaimer status updated' });
     } catch (error) {
