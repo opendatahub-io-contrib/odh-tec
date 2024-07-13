@@ -650,7 +650,8 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
             })
             .catch(error => {
                 console.error('Error importing model', error);
-                Emitter.emit('notification', { variant: 'warning', title: 'Model importing failed', description: String(error) });
+                Emitter.emit('notification', { variant: 'warning', title: 'Model importing failed', description: error.response.data.message.error });
+                eventSource.close();
                 setModelName('');
                 setModelFiles([]);
                 setUploadToS3Percentages({});
