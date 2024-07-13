@@ -4,33 +4,47 @@ This application implements tools that can be useful to anyone working with Open
 
 ## Current Features
 
+### S3 Tools
+
 - S3 Buckets Management: browsing, creation, deletion
 - S3 Objects Browser:
   - Single file upload, Multiple files uploads, Downloads
   - File preview
   - Model import from HuggingFace
-- S3 Connection testing
-- HuggingFace token testing
 
-## Overview
+### GPU Tools
+
+- VRAM Estimator: helps you calculate the VRAM and number of GPUs you need for inference and training.
+
+### Settings and validations
+
+- S3 connection testing
+- HuggingFace authentication testing
+
+## Screenshots
 
 Bucket Management:
-![bucket-management](bucket-management.png)
+![bucket-management](img/bucket-management.png)
 
 Single File Upload to S3:
-![upload-single](upload-single.png)
+![upload-single](img/upload-single.png)
 
 Multiple File Uploads to S3:
-![upload-single](upload-single.png)
+![upload-single](img/upload-single.png)
 
 Model Import from HuggingFace:
+![import-hf](img/import-hf.png)
 
+VRAM Estimator:
+![vram-estimator](img/vram-estimator.png)
 
 ## Deployment
 
 A container image of the application is available at: `quay.io/rh-aiservices-bu/odh-tec:latest`
 
 It can be imported as a custom workbench in ODH or RHOAI, used in a standard OpenShift Deployment, or launched locally with Podman.
+
+All the file transfers (computer->backend->S3 or Huggingface->S3) are fully streamed,meaning no local storage is necessary, and the RAM consumption stays as low as possible (256MB top when importing a 7B model from Hugging face). A setting is available to set the maximum number of concurrent file transfers (default 2). Increasing it will increase memory needs.
 
 ### Configuration
 
