@@ -668,7 +668,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
             <PageSection>
                 <Flex>
                     <FlexItem>
-                        <Text component={TextVariants.h4}>
+                        <Text component={TextVariants.p}>
                             Browsing objects in bucket:
                         </Text>
                     </FlexItem>
@@ -695,6 +695,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                                         <Button variant="link"
                                             className='breadcrumb-button'
                                             onClick={handlePrefixClick('')}
+                                            aria-label='bucket-name'
                                         >
                                             {bucketName}
                                         </Button>
@@ -707,6 +708,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                                                 className='breadcrumb-button'
                                                 onClick={handlePrefixClick(decodedPrefix.slice(0, -1).split('/').slice(0, index + 1).join('/') + '/')}
                                                 isDisabled={index === decodedPrefix.slice(0, -1).split('/').length - 1}
+                                                aria-label='folder-name'
                                             >
                                                 {part}
                                             </Button>
