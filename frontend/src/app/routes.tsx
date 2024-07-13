@@ -5,6 +5,7 @@ import { Redirect, Route, RouteComponentProps, Switch, useLocation } from 'react
 import Buckets from './components/Buckets/Buckets';
 import ObjectBrowser from './components/ObjectBrowser/ObjectBrowser';
 import SettingsManagement from './components/Settings/Settings';
+import VramEstimator from './components/VramEstimator/VramEstimator';
 
 
 let routeFocusTimer: number;
@@ -48,6 +49,19 @@ const routes: AppRouteConfig[] = [
         label: 'Bucket Management',
         path: '/buckets',
         title: 'Bucket Management',
+      },
+    ],
+  },
+  {
+    label: 'GPU Tools',
+    isExpanded: true,
+    routes: [
+      {
+        component: VramEstimator,
+        exact: true,
+        label: 'VRAM Estimator',
+        path: '/gpu/vram-estimator',
+        title: 'VRAM Estimator',
       },
     ],
   },

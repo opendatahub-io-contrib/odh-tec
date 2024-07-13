@@ -40,6 +40,7 @@ const SettingsManagement: React.FunctionComponent<SettingsProps> = () => {
     const params = useParams();
 
     /* Tabs Management */
+
     const [activeTabKey, setActiveTabKey] = React.useState<string | number>(0);
     const handleTabClick = (
         event: React.MouseEvent<any> | React.KeyboardEvent | MouseEvent,
@@ -79,8 +80,7 @@ const SettingsManagement: React.FunctionComponent<SettingsProps> = () => {
 
     const handleSaveS3Settings = (event) => {
         event.preventDefault();
-        console.log('Saving S3 settings', s3Settings);
-        axios.post(`${config.backend_api_url}/settings/s3`, s3Settings)
+        axios.put(`${config.backend_api_url}/settings/s3`, s3Settings)
             .then((response) => {
                 Emitter.emit('notification', { variant: 'success', title: '', description: 'Settings saved successfully!' });
                 setS3SettingsChanged(false);
@@ -91,7 +91,7 @@ const SettingsManagement: React.FunctionComponent<SettingsProps> = () => {
             });
     };
 
-    const handleTestConnection = (event) => {
+    const handleTestS3Connection = (event) => {
         event.preventDefault();
         axios.post(`${config.backend_api_url}/settings/test-s3`, s3Settings)
             .then((response) => {
@@ -133,8 +133,7 @@ const SettingsManagement: React.FunctionComponent<SettingsProps> = () => {
 
     const handleSaveHfSettings = (event) => {
         event.preventDefault();
-        console.log('Saving HuggingFace settings', hfSettings);
-        axios.post(`${config.backend_api_url}/settings/huggingface`, hfSettings)
+        axios.put(`${config.backend_api_url}/settings/huggingface`, hfSettings)
             .then((response) => {
                 Emitter.emit('notification', { variant: 'success', title: '', description: 'Settings saved successfully!' });
                 setHfSettingsChanged(false);
@@ -177,8 +176,7 @@ const SettingsManagement: React.FunctionComponent<SettingsProps> = () => {
 
     const handleSaveMaxConcurrentTransfers = (event) => {
         event.preventDefault();
-        console.log('Saving max concurrent transfers', maxConcurrentTransfers);
-        axios.post(`${config.backend_api_url}/settings/max-concurrent-transfers`, { maxConcurrentTransfers })
+        axios.put(`${config.backend_api_url}/settings/max-concurrent-transfers`, { maxConcurrentTransfers })
             .then((response) => {
                 Emitter.emit('notification', { variant: 'success', title: '', description: 'Settings saved successfully!' });
             })
@@ -270,7 +268,7 @@ const SettingsManagement: React.FunctionComponent<SettingsProps> = () => {
                                     <Button type="submit" className='form-settings-submit' isDisabled={!s3SettingsChanged}>Save S3 Settings</Button>
                                 </FlexItem>
                                 <FlexItem>
-                                    <Button className='form-settings-submit' onClick={handleTestConnection}>Test Connection</Button>
+                                    <Button className='form-settings-submit' onClick={handleTestS3Connection}>Test Connection</Button>
                                 </FlexItem>
                             </Flex>
                         </Form>

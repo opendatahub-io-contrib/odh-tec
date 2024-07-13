@@ -14,6 +14,7 @@ import {
 } from '../../../utils/config';
 
 export default async (fastify: FastifyInstance): Promise<void> => {
+  // Retrieve S3 settings
   fastify.get('/s3', async (req: FastifyRequest, reply: FastifyReply) => {
     const { accessKeyId, secretAccessKey, region, endpoint } = getS3Config();
     const settings = {
@@ -25,7 +26,8 @@ export default async (fastify: FastifyInstance): Promise<void> => {
     reply.send({ settings });
   });
 
-  fastify.post('/s3', async (req: FastifyRequest, reply: FastifyReply) => {
+  // Update S3 settings
+  fastify.put('/s3', async (req: FastifyRequest, reply: FastifyReply) => {
     const { accessKeyId, secretAccessKey, region, endpoint } = req.body as any;
     try {
       updateS3Config(accessKeyId, secretAccessKey, region, endpoint);
@@ -36,6 +38,7 @@ export default async (fastify: FastifyInstance): Promise<void> => {
     }
   });
 
+  // Test S3 connection
   fastify.post('/test-s3', async (req: FastifyRequest, reply: FastifyReply) => {
     const { accessKeyId, secretAccessKey, region, endpoint } = req.body as any;
     try {
@@ -56,6 +59,7 @@ export default async (fastify: FastifyInstance): Promise<void> => {
     }
   });
 
+  // Retrieve Hugging Face settings
   fastify.get('/huggingface', async (req: FastifyRequest, reply: FastifyReply) => {
     const hfToken = getHFConfig();
     const settings = {
@@ -65,7 +69,8 @@ export default async (fastify: FastifyInstance): Promise<void> => {
     reply.send({ settings });
   });
 
-  fastify.post('/huggingface', async (req: FastifyRequest, reply: FastifyReply) => {
+  // Update Hugging Face settings
+  fastify.put('/huggingface', async (req: FastifyRequest, reply: FastifyReply) => {
     const { hfToken } = req.body as any;
     try {
       updateHFConfig(hfToken);
@@ -76,6 +81,7 @@ export default async (fastify: FastifyInstance): Promise<void> => {
     }
   });
 
+  // Test Hugging Face connection
   fastify.post('/test-huggingface', async (req: FastifyRequest, reply: FastifyReply) => {
     const { hfToken } = req.body as any;
     try {
@@ -96,12 +102,14 @@ export default async (fastify: FastifyInstance): Promise<void> => {
     }
   });
 
+  // Retrieve max concurrent transfers
   fastify.get('/max-concurrent-transfers', async (req: FastifyRequest, reply: FastifyReply) => {
     const maxConcurrentTransfers = getMaxConcurrentTransfers();
     reply.send({ maxConcurrentTransfers });
   });
 
-  fastify.post('/max-concurrent-transfers', async (req: FastifyRequest, reply: FastifyReply) => {
+  // Update max concurrent transfers
+  fastify.put('/max-concurrent-transfers', async (req: FastifyRequest, reply: FastifyReply) => {
     const { maxConcurrentTransfers } = req.body as any;
     try {
       updateMaxConcurrentTransfers(maxConcurrentTransfers);

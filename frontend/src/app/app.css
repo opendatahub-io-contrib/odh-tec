@@ -158,3 +158,6 @@ body,
   height: 16px;
   padding-top: 1px;
 }
+.vram-calculator-section {
+  max-width: 75%;
+}
