@@ -102,7 +102,7 @@ export const deleteFile = (bucketName: string, decodedPrefix: string, selectedFi
 }
 
 // Creates a new folder in the current path
-export const createFolder = (bucketName: string, decodedPrefix: string, newFolderName: string, history, setNewFolderName) => {
+export const createFolder = (bucketName: string, decodedPrefix: string, newFolderName: string, history, setNewFolderName, setIsCreateFolderModalOpen) => {
     const formData = new FormData();
     const emptyFile = new File([''], '.s3keep');
     formData.append('file', emptyFile);
@@ -115,6 +115,7 @@ export const createFolder = (bucketName: string, decodedPrefix: string, newFolde
         .then(response => {
             Emitter.emit('notification', { variant: 'success', title: 'Folder created', description: 'Folder "' + newFolderName + '" has been successfully created.' });
             setNewFolderName('');
+            setIsCreateFolderModalOpen(false)
             history.push(`/objects/${bucketName}/${btoa(decodedPrefix)}`);
         })
         .catch(error => {

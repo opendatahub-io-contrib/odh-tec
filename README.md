@@ -43,4 +43,5 @@ It can be imported as a custom workbench in ODH or RHOAI, used in a standard Ope
 
 - Requirements: NodeJS 18 minimum.
 - From the root folder of the repo, run `npm install` to install all the required packages both for the frontend and the backend.
+- In both `backend` and `frontend` folders, copy the `.env.example` files to `.env` and adjust the values in the `backend` one to your liking.
 - Launch the application in development mode with `npm run dev`.

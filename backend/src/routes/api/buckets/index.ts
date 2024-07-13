@@ -1,11 +1,12 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { CreateBucketCommand, DeleteBucketCommand, ListBucketsCommand } from '@aws-sdk/client-s3';
 
-const config = require('../../../utils/config');
+import { getS3Config } from '../../../utils/config';
 
 export default async (fastify: FastifyInstance): Promise<void> => {
+  // Retrieve all buckets
   fastify.get('/', async (req: FastifyRequest, reply: FastifyReply) => {
-    const { s3Client } = config.getS3Config();
+    const { s3Client } = getS3Config();
     const command = new ListBucketsCommand({});
 
     try {
@@ -20,8 +21,9 @@ export default async (fastify: FastifyInstance): Promise<void> => {
     }
   });
 
+  // Create a new bucket
   fastify.post('/', async (req: FastifyRequest, reply: FastifyReply) => {
-    const { s3Client } = config.getS3Config();
+    const { s3Client } = getS3Config();
     const { bucketName } = req.body as any;
     const createBucketCommand = new CreateBucketCommand({
       Bucket: bucketName,
@@ -36,8 +38,9 @@ export default async (fastify: FastifyInstance): Promise<void> => {
     }
   });
 
+  // Delete a bucket
   fastify.delete('/:bucketName', async (req: FastifyRequest, reply: FastifyReply) => {
-    const { s3Client } = config.getS3Config();
+    const { s3Client } = getS3Config();
     const { bucketName } = req.params as any;
 
     const deleteBucketCommand = new DeleteBucketCommand({

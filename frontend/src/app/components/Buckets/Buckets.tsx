@@ -119,13 +119,12 @@ const Buckets: React.FunctionComponent = () => {
     // Create bucket modal handling
     const [isCreateBucketModalOpen, setIsCreateBucketModalOpen] = React.useState(false);
     const handleCreateBucketModalToggle = (_event: KeyboardEvent | React.MouseEvent) => {
-        /* Emitter.emit('notification',{variant: 'success',title: 'We have a winner', description: 'This is a success'}); */
         setIsCreateBucketModalOpen(!isCreateBucketModalOpen);
     };
 
     const handleNewBucketCreate = () => {
         if (!validateBucketName(newBucketName)) {
-            alert('Invalid bucket name');
+            Emitter.emit('notification', { variant: 'warning', title: 'Invalid bucket name', description: 'Bucket name ' + newBucketName + ' is invalid. Please check the rules and try again.' });
             return;
         } else {
             axios.post(`${config.backend_api_url}/buckets`, {
@@ -142,6 +141,7 @@ const Buckets: React.FunctionComponent = () => {
                             );
                             setBucketsList(newBucketsState);
                             setNewBucketName('');
+                            setIsCreateBucketModalOpen(false);
                         })
                         .catch(error => {
                             console.error(error);
@@ -149,10 +149,10 @@ const Buckets: React.FunctionComponent = () => {
                 })
                 .catch(error => {
                     Emitter.emit('notification', { variant: 'warning', title: 'Bucket creation failed', description: 'Bucket ' + newBucketName + ' could not be created. Reason: ' + error.response.data.message.Code });
+                    setIsCreateBucketModalOpen(false);
                     console.log(error.response.data.message.Code);
                 });
         }
-        setIsCreateBucketModalOpen(false);
     };
 
     const handleNewBucketCancel = () => {
@@ -207,6 +207,7 @@ const Buckets: React.FunctionComponent = () => {
                 })
                 .catch(error => {
                     console.error(error);
+                    Emitter.emit('notification', { variant: 'warning', title: 'Bucket deletion failed', description: 'Bucket ' + selectedBucket + ' could not be deleted. Reason: ' + error.response.data.error });
                 });
         }
     }
@@ -393,6 +394,11 @@ const Buckets: React.FunctionComponent = () => {
                             placeholder='Enter at least 3 characters'
                             value={newBucketName}
                             onChange={(_event, newBucketName) => setNewBucketName(newBucketName)}
+                            onKeyDown={(event) => {              
+                                if (event.key === 'Enter' && newBucketName.length > 2 && validateBucketName(newBucketName)) {
+                                    handleNewBucketCreate();
+                                }
+                            }}
                         />
                     </FormGroup>
                 </Form>

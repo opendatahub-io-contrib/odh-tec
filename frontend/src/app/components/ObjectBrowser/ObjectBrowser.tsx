@@ -567,7 +567,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
         if (folderName === '') {
             return false;
         }
-        const validCharacters = /^[b-zA-Z0-9!.\-_*'()]+$/;
+        const validCharacters = /^[a-zA-Z0-9!.\-_*'()]+$/;
         if (!validCharacters.test(folderName)) {
             return false;
         }
@@ -587,9 +587,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
             alert('Invalid folder name');
             return;
         } else {
-            createFolder(bucketName, decodedPrefix, newFolderName, history, setNewFolderName);
-            setNewFolderName('');
-            setIsCreateFolderModalOpen(false);
+            createFolder(bucketName, decodedPrefix, newFolderName, history, setNewFolderName, setIsCreateFolderModalOpen);
         }
     }
 
@@ -636,22 +634,26 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
 
             if (allCompleted) {
                 eventSource.close();
-            }
-        }
-
-        axios.get(`${config.backend_api_url}/objects/hf-import/${bucketName}/${btoa(decodedPrefix)}/${btoa(modelName)}`)
-            .then(response => {
                 Emitter.emit('notification', { variant: 'success', title: 'Model imported', description: 'Model "' + modelName + '" has been successfully imported.' });
                 setModelName('');
                 setModelFiles([]);
                 setUploadToS3Percentages({});
                 setIsImportModelModalOpen(false);
                 history.push(`/objects/${bucketName}/${btoa(decodedPrefix)}`);
+            }
+        }
+
+        const prefixToSend = btoa(decodedPrefix === '' ? 'there_is_no_prefix' : decodedPrefix); // We need to send something to respect the URL format
+        axios.get(`${config.backend_api_url}/objects/hf-import/${bucketName}/${prefixToSend}/${btoa(modelName)}`)
+            .then(response => {
+                Emitter.emit('notification', { variant: 'success', title: 'Model import', description: 'Model "' + modelName + '" import has successfully started.' });
             })
             .catch(error => {
-                console.error('Error cloning model', error);
+                console.error('Error importing model', error);
                 Emitter.emit('notification', { variant: 'warning', title: 'Model importing failed', description: String(error) });
                 setModelName('');
+                setModelFiles([]);
+                setUploadToS3Percentages({});
                 setIsImportModelModalOpen(false);
             });
     }
@@ -933,6 +935,11 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                             placeholder='Enter at least 1 character'
                             value={newFolderName}
                             onChange={(_event, newFolderName) => setNewFolderName(newFolderName)}
+                            onKeyDown={(event) => {
+                                if (event.key === 'Enter' && newFolderName.length > 0 && !newFolderNameRulesVisibility) {
+                                    handleNewFolderCreate();
+                                }
+                            }}
                         />
                     </FormGroup>
                 </Form>

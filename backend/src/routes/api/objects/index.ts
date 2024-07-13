@@ -11,9 +11,9 @@ import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import pLimit from 'p-limit';
 import { Readable } from 'stream';
 
-const config = require('../../../utils/config');
+import { getHFConfig, getMaxConcurrentTransfers, getS3Config } from '../../../utils/config';
 
-const limit = pLimit(config.getMaxConcurrentTransfers());
+const limit = pLimit(getMaxConcurrentTransfers());
 
 interface UploadProgress {
   loaded: number;
@@ -42,7 +42,7 @@ const abortUploadController = createRef(null);
 export default async (fastify: FastifyInstance): Promise<void> => {
   // Get all first-level objects in a bucket (delimiter is /)
   fastify.get('/:bucketName', async (req: FastifyRequest, reply: FastifyReply) => {
-    const { s3Client } = config.getS3Config();
+    const { s3Client } = getS3Config();
     const { bucketName } = req.params as any;
     const command = new ListObjectsV2Command({
       Bucket: bucketName,
@@ -54,7 +54,7 @@ export default async (fastify: FastifyInstance): Promise<void> => {
 
   fastify.get('/:bucketName/:prefix', async (req: FastifyRequest, reply: FastifyReply) => {
     // Get all first-level objects in a bucket under a specific prefix
-    const { s3Client } = config.getS3Config();
+    const { s3Client } = getS3Config();
     const { bucketName, prefix } = req.params as any;
     let decoded_prefix = '';
     if (prefix !== undefined) {
@@ -71,8 +71,8 @@ export default async (fastify: FastifyInstance): Promise<void> => {
 
   // Get an object to view it in the client
   fastify.get('/view/:bucketName/:encodedKey', async (req: FastifyRequest, reply: FastifyReply) => {
-    const { s3Client } = config.getS3Config();
-    const { bucketName, encodedKey: encodedKey } = req.params as any;
+    const { s3Client } = getS3Config();
+    const { bucketName, encodedKey } = req.params as any;
     const key = atob(encodedKey);
 
     const command = new GetObjectCommand({
@@ -94,7 +94,7 @@ export default async (fastify: FastifyInstance): Promise<void> => {
   fastify.get(
     '/download/:bucketName/:encodedKey',
     async (req: FastifyRequest, reply: FastifyReply) => {
-      const { s3Client } = config.getS3Config();
+      const { s3Client } = getS3Config();
       const { bucketName, encodedKey } = req.params as any;
       const key = atob(encodedKey);
       const fileName = key.split('/').pop();
@@ -130,20 +130,18 @@ export default async (fastify: FastifyInstance): Promise<void> => {
     },
   );
 
-  fastify.delete(
-    '/:bucketName/:encodedObjectName',
-    async (req: FastifyRequest, reply: FastifyReply) => {
-      const { s3Client } = config.getS3Config();
-      const { bucketName, encodedObjectName } = req.params as any;
-      const objectName = atob(encodedObjectName);
-      const command = new DeleteObjectCommand({
-        Bucket: bucketName,
-        Key: objectName,
-      });
-      await s3Client.send(command);
-      reply.send({ message: 'Object deleted successfully' });
-    },
-  );
+  // Delete an object from the bucket
+  fastify.delete('/:bucketName/:encodedKey', async (req: FastifyRequest, reply: FastifyReply) => {
+    const { s3Client } = getS3Config();
+    const { bucketName, encodedKey } = req.params as any;
+    const objectName = atob(encodedKey);
+    const command = new DeleteObjectCommand({
+      Bucket: bucketName,
+      Key: objectName,
+    });
+    await s3Client.send(command);
+    reply.send({ message: 'Object deleted successfully' });
+  });
 
   // Receive a file from the client and upload it to the bucket
   const uploadProgresses: UploadProgresses = {};
@@ -200,7 +198,7 @@ export default async (fastify: FastifyInstance): Promise<void> => {
     '/upload/:bucketName/:encodedKey',
     async (req: FastifyRequest, reply: FastifyReply) => {
       const { bucketName, encodedKey } = req.params as any;
-      const { s3Client } = config.getS3Config();
+      const { s3Client } = getS3Config();
       const key = atob(encodedKey);
 
       const data = await req.file({
@@ -253,6 +251,7 @@ export default async (fastify: FastifyInstance): Promise<void> => {
     },
   );
 
+  // Model files downloader
   const retrieveModelFile = async (
     s3Client: NodeJsClient<S3Client>,
     bucketName: string,
@@ -298,36 +297,49 @@ export default async (fastify: FastifyInstance): Promise<void> => {
     }
   };
 
+  // Queue manager for model files
+  const startModelImport = async (
+    modelFiles: Siblings,
+    s3Client: NodeJsClient<S3Client>,
+    bucketName: string,
+    prefix: string,
+    modelName: string,
+  ) => {
+    modelFiles.forEach((file: Sibling) => {
+      uploadProgresses[file.rfilename] = { loaded: 0, status: 'queued', total: 0 };
+    });
+    const promises = modelFiles.map((file: Sibling) =>
+      limit(() => retrieveModelFile(s3Client, bucketName, prefix, modelName, file)),
+    );
+    await Promise.all(promises);
+  };
+
+  // Import model from Hugging Face
   fastify.get(
     '/hf-import/:bucketName/:encodedPrefix/:encodedModelName',
     async (req: FastifyRequest, reply: FastifyReply) => {
       const { bucketName, encodedPrefix, encodedModelName } = req.params as any;
-      const prefix = atob(encodedPrefix);
+      let prefix = atob(encodedPrefix);
+      prefix = prefix === 'there_is_no_prefix' ? '' : prefix;
       const modelName = atob(encodedModelName);
-      const { s3Client } = config.getS3Config();
+      const { s3Client } = getS3Config();
       console.log(bucketName, prefix, modelName);
 
       try {
         const response = await axios.get('https://huggingface.co/api/models/' + modelName + '?', {
           headers: {
-            Authorization: `Bearer ${config.getHFConfig().hfToken}`,
+            Authorization: `Bearer ${getHFConfig()}`,
           },
         });
         if (response.status === 200) {
           const modelFiles: Siblings = response.data.siblings;
-          modelFiles.forEach((file: Sibling) => {
-            uploadProgresses[file.rfilename] = { loaded: 0, status: 'queued', total: 0 };
-          });
-          const promises = modelFiles.map((file: Sibling) =>
-            limit(() => retrieveModelFile(s3Client, bucketName, prefix, modelName, file)),
-          );
-          await Promise.all(promises);
+          startModelImport(modelFiles, s3Client, bucketName, prefix, modelName);
+          reply.send({ message: 'Model import started' });
         }
       } catch (error) {
         console.log(error);
         reply.code(500).send({ message: error.response.data });
       }
-      reply.send({ message: 'Model successfully imported' });
     },
   );
 
