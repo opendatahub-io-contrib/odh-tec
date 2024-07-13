@@ -259,17 +259,23 @@ export default async (fastify: FastifyInstance): Promise<void> => {
     modelName: string,
     file: Sibling,
   ) => {
-    const fileUrl = 'https://huggingface.co/' + modelName + '/resolve/main/' + file.rfilename;
-    const fileSize = (await axios.head(fileUrl)).headers['content-length'];
-    const fileStream = (await axios.get(fileUrl, { responseType: 'stream' })).data;
-
-    const target = {
-      Bucket: bucketName,
-      Key: prefix + modelName + '/' + file.rfilename,
-      Body: fileStream,
-    };
-
     try {
+      const auth_headers = { Authorization: `Bearer ${getHFConfig()}` };
+      const fileUrl = 'https://huggingface.co/' + modelName + '/resolve/main/' + file.rfilename;
+      const response = await axios.head(fileUrl, { headers: auth_headers });
+      const fileSize = response.headers['content-length'];
+      const fileStream = (
+        await axios.get(fileUrl, {
+          headers: auth_headers,
+          responseType: 'stream',
+        })
+      ).data;
+
+      const target = {
+        Bucket: bucketName,
+        Key: prefix + modelName + '/' + file.rfilename,
+        Body: fileStream,
+      };
       const upload = new Upload({
         client: s3Client,
         queueSize: 4, // optional concurrency configuration
