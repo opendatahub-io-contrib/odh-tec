@@ -1,3 +1,4 @@
+import config from '@app/config';
 import logo from '@app/assets/bgimages/odh-logo.svg';
 import { IAppRoute, IAppRouteGroup, routes } from '@app/routes';
 import {
@@ -23,6 +24,7 @@ import {
   MastheadToggle,
   MenuToggle,
   MenuToggleElement,
+  Modal,
   Nav,
   NavExpandable,
   NavItem,
@@ -39,6 +41,7 @@ import {
   Page,
   PageSidebar,
   PageSidebarBody,
+  PageToggleButton,
   Popover,
   SkipToContent,
   Text,
@@ -54,6 +57,7 @@ import * as React from 'react';
 import { useTranslation } from 'react-i18next';
 import { NavLink, useLocation } from 'react-router-dom';
 import Emitter from '../../utils/emitter';
+import axios from 'axios';
 
 interface IAppLayout {
   children: React.ReactNode;
@@ -85,7 +89,7 @@ const AppLayout: React.FunctionComponent<IAppLayout> = ({ children }) => {
     };
   }, []);
 
-  const [sidebarOpen, setSidebarOpen] = React.useState(true);
+  /* const [sidebarOpen, setSidebarOpen] = React.useState(true); */
   const [selectedLanguage, setSelectedLanguage] = React.useState('en');
 
   const onChangeLanguage = (_event: React.FormEvent<HTMLSelectElement>, language: string) => {
@@ -447,12 +451,12 @@ const AppLayout: React.FunctionComponent<IAppLayout> = ({ children }) => {
   );
 
   const Header = (
-    <Masthead>
+    <Masthead role="banner" aria-label="page masthead">
       <MastheadToggle>
-        <Button variant="plain" onClick={() => setSidebarOpen(!sidebarOpen)} aria-label="Global navigation">
-          <BarsIcon />
-        </Button>
-      </MastheadToggle>
+          <PageToggleButton id="page-nav-toggle" variant="plain" aria-label="Dashboard navigation">
+            <BarsIcon />
+          </PageToggleButton>
+        </MastheadToggle>
       <MastheadMain>
         <MastheadBrand>
           <Brand src={logo} alt="Patternfly Logo" heights={{ default: '36px' }} />
@@ -479,19 +483,84 @@ const AppLayout: React.FunctionComponent<IAppLayout> = ({ children }) => {
     </SkipToContent>
   );
 
+  const [isDisclaimerModalOpen, setIsDisclaimerModalOpen] = React.useState(false);
+  const handleDisclaimerModalToggle = () => {
+    setIsDisclaimerModalOpen(!isDisclaimerModalOpen);
+  }
+
+  // Load disclaimer status at startup by calling the backend API
+  React.useEffect(() => {
+    axios.get(`${config.backend_api_url}/disclaimer`)
+      .then((response) => {
+        console.log(response);
+        if (response.data.disclaimer.status === 'accepted') {
+          console.log('Disclaimer already accepted');
+        } else {
+          setIsDisclaimerModalOpen(true);
+        }
+      })
+      .catch((error) => {
+        console.log(error);
+        setIsDisclaimerModalOpen(true);
+      });
+  }, []);
+
+  // Save disclaimer status to the backend API
+  const saveDisclaimerStatus = () => {
+    axios.put(`${config.backend_api_url}/disclaimer`, { status: 'accepted' })
+      .then((response) => {
+        setIsDisclaimerModalOpen(false);
+        console.log(response);
+      })
+      .catch((error) => {
+        setIsDisclaimerModalOpen(false);
+        console.log(error);
+      });
+  }
+
   return (
     <Page
       mainContainerId={pageId}
       header={Header}
-      sidebar={sidebarOpen && Sidebar}
+      sidebar={Sidebar}
       skipToContent={PageSkipToContent}
       notificationDrawer={notificationDrawer}
       isNotificationDrawerExpanded={isDrawerExpanded}
+      isManagedSidebar
     >
       {children}
       <AlertGroup isToast isLiveRegion onOverflowClick={onAlertGroupOverflowClick} overflowMessage={overflowMessage}>
         {alerts.slice(0, maxDisplayed)}
       </AlertGroup>
+      <Modal
+        title={"Disclaimer"}
+        titleIconVariant="info"
+        className="bucket-modal"
+        isOpen={isDisclaimerModalOpen}
+        onClose={handleDisclaimerModalToggle}
+        actions={[
+          <Button key="accept" variant="primary" onClick={saveDisclaimerStatus}>
+            Accept
+          </Button>
+        ]}>
+        <TextContent>
+          <Text component={TextVariants.p}>
+            Thank you for using this application!
+          </Text>
+          <Text component={TextVariants.p}>
+            While we strive to ensure a great experience, estimation results may not always be accurate and any unwanted effects, including data deletion, are your responsibility.
+          </Text>
+          <Text component={TextVariants.p}>
+            If you find any issue with the application, please report it on the project repository (click on the upper right question mark for the address).
+            </Text>
+          <Text component={TextVariants.p}>
+            We appreciate your understanding and encourage you to use the app with care. Enjoy!
+          </Text>
+          <Text component={TextVariants.small}>
+            (This disclaimer will not be shown again)
+          </Text>
+        </TextContent>
+      </Modal>
     </Page>
   );
 };

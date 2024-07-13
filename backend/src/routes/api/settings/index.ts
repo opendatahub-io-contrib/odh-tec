@@ -65,7 +65,6 @@ export default async (fastify: FastifyInstance): Promise<void> => {
     const settings = {
       hfToken: hfToken,
     };
-    console.log(settings);
     reply.send({ settings });
   });
 

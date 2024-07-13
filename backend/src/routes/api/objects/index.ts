@@ -290,7 +290,6 @@ export default async (fastify: FastifyInstance): Promise<void> => {
           status: 'uploading',
           total: fileSize,
         };
-        console.log('Progress:', file.rfilename, progress.loaded, fileSize);
       });
 
       await upload.done();
@@ -329,7 +328,6 @@ export default async (fastify: FastifyInstance): Promise<void> => {
       prefix = prefix === 'there_is_no_prefix' ? '' : prefix;
       const modelName = atob(encodedModelName);
       const { s3Client } = getS3Config();
-      console.log(bucketName, prefix, modelName);
 
       try {
         const response = await axios.get('https://huggingface.co/api/models/' + modelName + '?', {
