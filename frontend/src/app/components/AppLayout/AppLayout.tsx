@@ -55,7 +55,7 @@ import {
 import { BarsIcon, EllipsisVIcon, QuestionCircleIcon, SearchIcon } from '@patternfly/react-icons';
 import * as React from 'react';
 import { useTranslation } from 'react-i18next';
-import { NavLink, useLocation } from 'react-router-dom';
+import { Link, NavLink, useLocation } from 'react-router-dom';
 import Emitter from '../../utils/emitter';
 import axios from 'axios';
 
@@ -544,19 +544,8 @@ const AppLayout: React.FunctionComponent<IAppLayout> = ({ children }) => {
         ]}>
         <TextContent>
           <Text component={TextVariants.p}>
-            Thank you for using this application!
-          </Text>
-          <Text component={TextVariants.p}>
-            While we strive to ensure a great experience, estimation results may not always be accurate and any unwanted effects, including data deletion, are your responsibility.
-          </Text>
-          <Text component={TextVariants.p}>
-            If you find any issue with the application, please report it on the project repository (click on the upper right question mark for the address).
-            </Text>
-          <Text component={TextVariants.p}>
-            We appreciate your understanding and encourage you to use the app with care. Enjoy!
-          </Text>
-          <Text component={TextVariants.small}>
-            (This disclaimer will not be shown again)
+            This application is provided "as is" under a MIT licence, without any warranty of any kind.<br />
+            Please refer to the <a href='https://github.com/opendatahub-io-contrib/odh-tec/blob/main/LICENSE' target='_blank'>license file</a> for more details
           </Text>
         </TextContent>
       </Modal>
