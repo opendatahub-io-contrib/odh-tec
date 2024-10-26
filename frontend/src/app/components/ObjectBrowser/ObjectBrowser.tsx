@@ -22,7 +22,7 @@ import * as React from 'react';
 import { useHistory, useLocation, useParams } from 'react-router-dom';
 import Emitter from '../../utils/emitter';
 import DocumentRenderer from '../DocumentRenderer/DocumentRenderer';
-import { createFolder, deleteFile, loadBuckets, refreshObjects } from './objectBrowserFunctions';
+import { createFolder, deleteFolder, deleteFile, loadBuckets, refreshObjects } from './objectBrowserFunctions';
 import { BucketsList, ObjectRow, PrefixRow, UploadedFile, S3Objects, S3Prefixes, ExtendedFile } from './objectBrowserTypes';
 import HfLogo from '@app/assets/bgimages/hf-logo.svg';
 import pLimit from 'p-limit';
@@ -553,6 +553,44 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
     }
 
     /*
+      Folder deletion
+    */
+    const [isDeleteFolderModalOpen, setIsDeleteFolderModalOpen] = React.useState(false);
+    const [selectedFolder, setSelectedFolder] = React.useState('');
+    const [folderToDelete, setFolderToDelete] = React.useState('');
+
+    const handleDeleteFolderModalToggle = (_event: KeyboardEvent | React.MouseEvent) => {
+        setIsDeleteFolderModalOpen(!isDeleteFolderModalOpen);
+    }
+
+    const handleDeleteFolderClick = (prefix: string) => (event: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
+        setSelectedFolder(prefix);
+        handleDeleteFolderModalToggle(event);
+    }
+
+    const validateFolderToDelete = (): boolean => {
+        if (folderToDelete !== selectedFolder.slice(0, -1).split('/').pop()) {
+            return false;
+        } else {
+            return true;
+        }
+    }
+
+    const handleDeleteFolderConfirm = () => {
+        if (!validateFolderToDelete()) {
+            console.log('Invalid folder to delete');
+            return;
+        } else {
+            deleteFolder(bucketName, decodedPrefix, selectedFolder, history, setFolderToDelete, setIsDeleteFolderModalOpen);
+        }
+    }
+
+    const handleDeleteFolderCancel = () => {
+        setFolderToDelete('');
+        setIsDeleteFolderModalOpen(false);
+    }
+
+    /*
       Folder creation
     */
     const [newFolderName, setNewFolderName] = React.useState('');
@@ -723,8 +761,6 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                                 </Button>
                             </FlexItem>
                         </Flex>
-
-
                     </FlexItem>
                     <FlexItem>
                         <Flex>
@@ -783,7 +819,24 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                                             </Td>
                                             <Td className='bucket-column'></Td>
                                             <Td className='bucket-column'></Td>
-                                            <Td className='bucket-column align-right'></Td>
+                                            <Td className='bucket-column align-right'>
+                                            <ToolbarContent>
+                                                    <ToolbarGroup
+                                                        variant="icon-button-group"
+                                                        align={{ default: 'alignRight' }}
+                                                        spacer={{ default: 'spacerMd', md: 'spacerMd' }}
+                                                    >
+                                                         <ToolbarItem>
+                                                            <Tooltip content={<div>Delete this folder.</div>}>
+                                                                <Button variant="danger" className='button-file-control'
+                                                                    onClick={handleDeleteFolderClick(row.prefix)}>
+                                                                    <FontAwesomeIcon icon={faTrash} />
+                                                                </Button>
+                                                            </Tooltip>
+                                                        </ToolbarItem>
+                                                    </ToolbarGroup>
+                                                </ToolbarContent>
+                                            </Td>
                                         </Tr>
                                     ))}
                                 </Tbody>
@@ -909,6 +962,41 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                 />
             </Modal>
             <Modal
+                title="Delete folder and all its content?"
+                titleIconVariant="warning"
+                className="bucket-modal"
+                isOpen={isDeleteFolderModalOpen}
+                onClose={handleDeleteFolderModalToggle}
+                actions={[
+                    <Button key="confirm" variant='danger' onClick={handleDeleteFolderConfirm}>
+                        Delete folder
+                    </Button>,
+                    <Button key="cancel" variant="secondary" onClick={handleDeleteFolderCancel}>
+                        Cancel
+                    </Button>
+                ]}
+            >
+                <TextContent>
+                    <Text component={TextVariants.p}>
+                        This action cannot be undone.
+                    </Text>
+                    <Text component={TextVariants.p}>
+                        Type <strong>{selectedFolder.slice(0, -1).split('/').pop()}</strong> to confirm deletion.
+                    </Text>
+                </TextContent>
+                <TextInput
+                    id="delete-folder-modal-input"
+                    aria-label="Delete folder modal input"
+                    value={folderToDelete}
+                    onChange={(_event, folderToDelete) => setFolderToDelete(folderToDelete)}
+                    onKeyDown={(event) => {
+                        if (event.key === 'Enter' && validateFolderToDelete()) {
+                            handleDeleteFolderConfirm();
+                        }
+                    }}
+                />
+            </Modal>
+            <Modal
                 title="Create a new folder"
                 className="bucket-modal"
                 isOpen={isCreateFolderModalOpen}
@@ -994,7 +1082,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                         <FlexItem key={file}>
                             <Progress
                                 value={uploadToS3Percentages[file]?.loaded ?? 0}
-                                title={file + ' - ' + uploadToS3Percentages[file]?.status ?? ''}
+                                title={`${file} - ${uploadToS3Percentages[file]?.status ?? ''}`}
                                 measureLocation='outside'
                                 variant={uploadToS3Percentages[file]?.status === 'completed' ? 'success' : undefined}
                                 size={ProgressSize.sm} />
@@ -1062,7 +1150,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                                 <MultipleFileUploadStatusItem
                                     file={file}
                                     key={file.path}
-                                    fileName={file.path + ' - ' + uploadToS3Percentages[decodedPrefix + file.path.replace(/^\//, '')]?.status ?? ''}
+                                    fileName={file.path + ' - ' + (uploadToS3Percentages[decodedPrefix + file.path.replace(/^\//, '')]?.status ?? '')}
                                     onClearClick={() => removeFiles([file.path])}
                                     progressHelperText={createHelperText(file)}
                                     customFileHandler={() => { ; }}

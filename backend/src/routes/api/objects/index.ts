@@ -1,5 +1,6 @@
 import {
   DeleteObjectCommand,
+  DeleteObjectsCommand,
   GetObjectCommand,
   ListObjectsV2Command,
   S3Client,
@@ -130,17 +131,45 @@ export default async (fastify: FastifyInstance): Promise<void> => {
     },
   );
 
-  // Delete an object from the bucket
+  // Delete an object or objects with given prefix (folder) from the bucket
   fastify.delete('/:bucketName/:encodedKey', async (req: FastifyRequest, reply: FastifyReply) => {
     const { s3Client } = getS3Config();
     const { bucketName, encodedKey } = req.params as any;
-    const objectName = atob(encodedKey);
-    const command = new DeleteObjectCommand({
+    const objectName = atob(encodedKey); // This can also be the prefix
+
+    // Check if the objectName is a real object or a prefix
+    const listCommand = new ListObjectsV2Command({
       Bucket: bucketName,
-      Key: objectName,
+      Prefix: objectName,
     });
-    await s3Client.send(command);
-    reply.send({ message: 'Object deleted successfully' });
+
+    try {
+      const listResponse = await s3Client.send(listCommand);
+
+      if (listResponse.Contents && listResponse.Contents.length > 0) {
+        // If there are multiple objects with the prefix, delete all of them
+        const deleteParams = {
+          Bucket: bucketName,
+          Delete: {
+            Objects: listResponse.Contents.map((item: any) => ({ Key: item.Key })),
+          },
+        };
+
+        const deleteCommand = new DeleteObjectsCommand(deleteParams);
+        await s3Client.send(deleteCommand);
+        reply.send({ message: 'Objects deleted successfully' });
+      } else {
+        // If it's a single object, delete it
+        const deleteCommand = new DeleteObjectCommand({
+          Bucket: bucketName,
+          Key: objectName,
+        });
+        await s3Client.send(deleteCommand);
+        reply.send({ message: 'Object deleted successfully' });
+      }
+    } catch (error) {
+      reply.code(500).send({ message: 'Error deleting object(s)', error });
+    }
   });
 
   // Receive a file from the client and upload it to the bucket

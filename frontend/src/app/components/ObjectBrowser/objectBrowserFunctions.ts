@@ -90,7 +90,7 @@ export const uploadSingleFile = async (file: ExtendedFile, decodedPrefix: string
 export const deleteFile = (bucketName: string, decodedPrefix: string, selectedFile: string, history, setFileToDelete, setIsDeleteFileModalOpen) => {
     axios.delete(`${config.backend_api_url}/objects/${bucketName}/${btoa(selectedFile)}`)
         .then(response => {
-            Emitter.emit('notification', { variant: 'success', title: 'File deleted', description: 'File "' + selectedFile + '" has been successfully deleted.' });
+            Emitter.emit('notification', { variant: 'success', title: 'File deleted', description: 'File "' + selectedFile.split('/').pop() + '" has been successfully deleted.' });
             history.push(`/objects/${bucketName}/${btoa(decodedPrefix)}`);
             setFileToDelete('');
             setIsDeleteFileModalOpen(false);
@@ -98,6 +98,21 @@ export const deleteFile = (bucketName: string, decodedPrefix: string, selectedFi
         .catch(error => {
             console.error('Error deleting file', error);
             Emitter.emit('notification', { variant: 'warning', title: 'File deletion failed', description: String(error) });
+        });
+}
+
+// Deletes a folder from the backend
+export const deleteFolder = (bucketName: string, decodedPrefix: string, selectedFolder: string, history, setFolderToDelete, setIsDeleteFolderModalOpen) => {
+    axios.delete(`${config.backend_api_url}/objects/${bucketName}/${btoa(selectedFolder)}`)
+        .then(response => {
+            Emitter.emit('notification', { variant: 'success', title: 'Folder deleted', description: 'Folder "' + selectedFolder.slice(0, -1).split('/').pop() + '" has been successfully deleted.' });
+            history.push(`/objects/${bucketName}/${btoa(decodedPrefix)}`);
+            setFolderToDelete('');
+            setIsDeleteFolderModalOpen(false);
+        })
+        .catch(error => {
+            console.error('Error deleting folder', error);
+            Emitter.emit('notification', { variant: 'warning', title: 'Folder deletion failed', description: String(error) });
         });
 }
 
