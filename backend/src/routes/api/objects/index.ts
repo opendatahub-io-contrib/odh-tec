@@ -325,7 +325,7 @@ export default async (fastify: FastifyInstance): Promise<void> => {
       uploadProgresses[file.rfilename] = { loaded: fileSize, status: 'completed', total: fileSize };
       abortUploadController.current = null;
     } catch (e) {
-      console.log(e);
+      //console.log(e);
       abortUploadController.current = null;
       delete uploadProgresses[file.rfilename];
     }
@@ -357,21 +357,39 @@ export default async (fastify: FastifyInstance): Promise<void> => {
       prefix = prefix === 'there_is_no_prefix' ? '' : prefix;
       const modelName = atob(encodedModelName);
       const { s3Client } = getS3Config();
-
+      let modelInfo: any = {};
       try {
-        const response = await axios.get('https://huggingface.co/api/models/' + modelName + '?', {
+        modelInfo = await axios.get('https://huggingface.co/api/models/' + modelName + '?', {
           headers: {
             Authorization: `Bearer ${getHFConfig()}`,
           },
         });
-        if (response.status === 200) {
-          const modelFiles: Siblings = response.data.siblings;
-          startModelImport(modelFiles, s3Client, bucketName, prefix, modelName);
-          reply.send({ message: 'Model import started' });
-        }
       } catch (error) {
-        console.log(error);
         reply.code(500).send({ message: error.response.data });
+      }
+      const modelGated = modelInfo.data.gated;
+      let authorizedUser = true;
+      if (modelGated !== false) {
+        try {
+          await axios.get('https://huggingface.co/api/whoami-v2?', {
+            headers: {
+              Authorization: `Bearer ${getHFConfig()}`,
+            },
+          });
+        } catch (error) {
+          authorizedUser = false;
+        }
+      }
+      if (!authorizedUser) {
+        reply.code(500).send({
+          message:
+            'This model requires a valid HuggingFace token to be downloaded. Check your settings.',
+        });
+        return;
+      } else {
+        const modelFiles: Siblings = modelInfo.data.siblings;
+        startModelImport(modelFiles, s3Client, bucketName, prefix, modelName);
+        reply.send({ message: 'Model import started' });
       }
     },
   );

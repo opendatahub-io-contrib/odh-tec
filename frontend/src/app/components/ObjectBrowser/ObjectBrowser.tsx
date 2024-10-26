@@ -687,8 +687,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                 Emitter.emit('notification', { variant: 'success', title: 'Model import', description: 'Model "' + modelName + '" import has successfully started.' });
             })
             .catch(error => {
-                console.error('Error importing model', error);
-                Emitter.emit('notification', { variant: 'warning', title: 'Model importing failed', description: error.response.data.message.error });
+                Emitter.emit('notification', { variant: 'warning', title: 'Model import failed', description: error.response.data.message });
                 eventSource.close();
                 setModelName('');
                 setModelFiles([]);
