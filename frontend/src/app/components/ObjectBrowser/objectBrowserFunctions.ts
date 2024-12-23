@@ -8,14 +8,18 @@ import Emitter from '../../utils/emitter';
 export const loadBuckets = (bucketName: string, history, setBucketsList) => {
     axios.get(`${config.backend_api_url}/buckets`)
         .then(response => {
-            const { owner, buckets } = response.data;
+            const { owner, defaultBucket, buckets } = response.data;
             const newBucketsState = new BucketsList(
                 buckets.map((bucket: any) => new Bucket(bucket.Name, bucket.CreationDate)),
                 new Owner(owner.DisplayName, owner.ID)
             );
             setBucketsList(newBucketsState);
             if (bucketName === ":bucketName") {
-                history.push(`/objects/${buckets[0].Name}`);
+                if ( defaultBucket !== '' )
+                    history.push(`/objects/${defaultBucket}`);
+                else {
+                    history.push(`/objects/${buckets[0].Name}`);
+                }
             }
         })
         .catch(error => {

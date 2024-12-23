@@ -64,11 +64,13 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
     // Load buckets at startup and when location changes
     React.useEffect(() => {
         loadBuckets(bucketName, history, setBucketsList);
+        setFormSelectBucket(bucketName);
     }, [location]);
 
     // Refresh objects from the bucket when location changes
     React.useEffect(() => {
         refreshObjects(bucketName, prefix, setDecodedPrefix, setS3Objects, setS3Prefixes);
+        setFormSelectBucket(bucketName);
     }, [location, prefix]);
 
     // Handle bucket change in the dropdown

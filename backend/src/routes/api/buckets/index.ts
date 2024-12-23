@@ -13,6 +13,7 @@ export default async (fastify: FastifyInstance): Promise<void> => {
       const { Owner, Buckets } = await s3Client.send(command);
       reply.send({
         owner: Owner,
+        defaultBucket: process.env.AWS_S3_BUCKET || '',
         buckets: Buckets,
       });
     } catch (error) {
