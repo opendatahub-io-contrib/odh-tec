@@ -18,8 +18,8 @@ import {
     TextInput,
     TextVariants,
 } from '@patternfly/react-core';
-import { Table, Caption, Thead, Tr, Th, Tbody, Td, ThProps } from '@patternfly/react-table';
-import { AlignRightIcon, SearchIcon } from '@patternfly/react-icons';
+import { Table, Thead, Tr, Th, Tbody, Td, ThProps } from '@patternfly/react-table';
+import { SearchIcon } from '@patternfly/react-icons';
 import Emitter from '../../utils/emitter';
 import { useHistory } from 'react-router-dom';
 

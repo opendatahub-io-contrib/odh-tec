@@ -49,8 +49,12 @@ export default async (fastify: FastifyInstance): Promise<void> => {
       Bucket: bucketName,
       Delimiter: '/',
     });
-    const { Contents, CommonPrefixes } = await s3Client.send(command);
-    reply.send({ objects: Contents, prefixes: CommonPrefixes });
+    try {
+      const { Contents, CommonPrefixes } = await s3Client.send(command);
+      reply.send({ objects: Contents, prefixes: CommonPrefixes });
+    } catch (err) {
+      reply.code(500).send({ message: 'Error fetching objects', error: err });
+    }
   });
 
   fastify.get('/:bucketName/:prefix', async (req: FastifyRequest, reply: FastifyReply) => {

@@ -17,12 +17,14 @@ class S3Settings {
     secretAccessKey: string;
     region: string;
     endpoint: string;
+    defaultBucket: string;
 
-    constructor(accessKeyId: string, secretAccessKey: string, region: string, endpoint: string) {
+    constructor(accessKeyId: string, secretAccessKey: string, region: string, endpoint: string, defaultBucket: string) {
         this.accessKeyId = accessKeyId ?? '';
         this.secretAccessKey = secretAccessKey ?? '';
         this.region = region ?? '';
         this.endpoint = endpoint ?? '';
+        this.defaultBucket = defaultBucket ?? '';
     }
 }
 
@@ -51,7 +53,7 @@ const SettingsManagement: React.FunctionComponent<SettingsProps> = () => {
 
     /* S3 Settings Management */
 
-    const [s3Settings, setS3Settings] = React.useState<S3Settings>(new S3Settings('', '', '', ''));
+    const [s3Settings, setS3Settings] = React.useState<S3Settings>(new S3Settings('', '', '', '', ''));
     const [s3SettingsChanged, setS3SettingsChanged] = React.useState<boolean>(false);
 
     const [showS3SecretKey, setS3ShowSecretKey] = React.useState<boolean>(false);
@@ -61,7 +63,7 @@ const SettingsManagement: React.FunctionComponent<SettingsProps> = () => {
             .then((response) => {
                 const { settings } = response.data;
                 if (settings !== undefined) {
-                    setS3Settings(new S3Settings(settings.accessKeyId, settings.secretAccessKey, settings.region, settings.endpoint));
+                    setS3Settings(new S3Settings(settings.accessKeyId, settings.secretAccessKey, settings.region, settings.endpoint, settings.defaultBucket));
                 }
             })
             .catch((error) => {
@@ -261,6 +263,15 @@ const SettingsManagement: React.FunctionComponent<SettingsProps> = () => {
                                     id="endpoint"
                                     name="endpoint"
                                     className='form-settings-long'
+                                />
+                            </FormGroup>
+                            <FormGroup label="Default Bucket" fieldId="defaultBucket">
+                                <TextInput
+                                    value={s3Settings.defaultBucket}
+                                    onChange={(_event, value) => handleS3Change(value, 'defaultBucket')}
+                                    id="defaultBucket"
+                                    name="defaultBucket"
+                                    className='form-settings'
                                 />
                             </FormGroup>
                             <Flex>

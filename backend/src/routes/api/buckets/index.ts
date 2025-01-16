@@ -6,14 +6,14 @@ import { getS3Config } from '../../../utils/config';
 export default async (fastify: FastifyInstance): Promise<void> => {
   // Retrieve all buckets
   fastify.get('/', async (req: FastifyRequest, reply: FastifyReply) => {
-    const { s3Client } = getS3Config();
+    const { s3Client, defaultBucket } = getS3Config();
     const command = new ListBucketsCommand({});
 
     try {
       const { Owner, Buckets } = await s3Client.send(command);
       reply.send({
         owner: Owner,
-        defaultBucket: process.env.AWS_S3_BUCKET || '',
+        defaultBucket: defaultBucket,
         buckets: Buckets,
       });
     } catch (error) {
