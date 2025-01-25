@@ -60,6 +60,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
     // Buckets handling
     const [bucketsList, setBucketsList] = React.useState<BucketsList | null>(null);
     const [formSelectBucket, setFormSelectBucket] = React.useState(bucketName);
+    const [textInputBucket, setTextInputBucket] = React.useState('bucketName');
 
     // Load buckets at startup and when location changes
     React.useEffect(() => {
@@ -71,12 +72,18 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
     React.useEffect(() => {
         refreshObjects(bucketName, prefix, setDecodedPrefix, setS3Objects, setS3Prefixes);
         setFormSelectBucket(bucketName);
+        setTextInputBucket(bucketName);
     }, [location, prefix]);
 
     // Handle bucket change in the dropdown
-    const handleBucketChange = (_event: React.FormEvent<HTMLSelectElement>, value: string) => {
+    const handleBucketSelectorChange = (_event: React.FormEvent<HTMLSelectElement>, value: string) => {
         setFormSelectBucket(value);
         history.push(`/objects/${value}`);
+    }
+
+    const handleBucketTextInputSend = (_event: React.MouseEvent<HTMLButtonElement>) => {
+        //setFormSelectBucket(bucketName);
+        history.push(`/objects/${textInputBucket}`);
     }
 
     /*
@@ -418,7 +425,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
             }
             return newPercentages;
         });
-        
+
         setUploadToS3Percentages((prevPercentages) => {
             const newPercentages = { ...prevPercentages };
             for (const file of fullDroppedFiles) {
@@ -430,7 +437,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
         // Start the upload process, using limit to control the number of concurrent uploads
         const limit = pLimit(maxConcurrentTransfers);
 
-        const promises = fullDroppedFiles.map((file: ExtendedFile) => 
+        const promises = fullDroppedFiles.map((file: ExtendedFile) =>
             limit(() => handleFileUpload(file)),
         );
 
@@ -705,21 +712,53 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                 </TextContent>
             </PageSection>
             <PageSection>
-                <Flex>
-                    <FlexItem>
-                        <Text component={TextVariants.p}>
-                            Browsing objects in bucket:
-                        </Text>
+                <Flex direction={{ default: 'column' }}>
+                    <FlexItem><Flex>
+                        <FlexItem>
+                            <Text component={TextVariants.p}>
+                                Bucket Selection:
+                            </Text>
+                        </FlexItem>
+                        <FlexItem>
+                            <FormSelect className='bucket-select' value={formSelectBucket}
+                                aria-label="FormSelect Input"
+                                ouiaId="BasicFormSelect"
+                                onChange={handleBucketSelectorChange}>
+                                {bucketsList?.buckets.map(bucket => (
+                                    <FormSelectOption key={bucket.Name} value={bucket.Name} label={bucket.Name} />
+                                ))}
+                            </FormSelect>
+                        </FlexItem>
+                    </Flex>
                     </FlexItem>
                     <FlexItem>
-                        <FormSelect className='bucket-select' value={formSelectBucket}
-                            aria-label="FormSelect Input"
-                            ouiaId="BasicFormSelect"
-                            onChange={handleBucketChange}>
-                            {bucketsList?.buckets.map(bucket => (
-                                <FormSelectOption key={bucket.Name} value={bucket.Name} label={bucket.Name} />
-                            ))}
-                        </FormSelect>
+                        <Flex>
+                            <FlexItem>
+                                <Text component={TextVariants.p}>
+                                    Browsing objects in bucket :
+                                </Text>
+                            </FlexItem>
+                            <FlexItem>
+                                <TextInput
+                                    value={textInputBucket}
+                                    onChange={(_event, textInputBucket) => setTextInputBucket(textInputBucket)}
+                                    onKeyDown={(event) => {
+                                        if (event.key === 'Enter') {
+                                            handleBucketTextInputSend(event as unknown as React.MouseEvent<HTMLButtonElement>);
+                                        }
+                                    }}
+                                    type="search"
+                                    aria-label="search text input"
+                                    placeholder="Filter objects..."
+                                    className='buckets-list-filter-search'
+                                />
+                            </FlexItem>
+                            <FlexItem>
+                            <Button variant="secondary" onClick={handleBucketTextInputSend} ouiaId="RefreshBucket">
+                                Set bucket
+                            </Button>
+                            </FlexItem>
+                        </Flex>
                     </FlexItem>
                 </Flex>
             </PageSection>
@@ -821,13 +860,13 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                                             <Td className='bucket-column'></Td>
                                             <Td className='bucket-column'></Td>
                                             <Td className='bucket-column align-right'>
-                                            <ToolbarContent>
+                                                <ToolbarContent>
                                                     <ToolbarGroup
                                                         variant="icon-button-group"
                                                         align={{ default: 'alignRight' }}
                                                         spacer={{ default: 'spacerMd', md: 'spacerMd' }}
                                                     >
-                                                         <ToolbarItem>
+                                                        <ToolbarItem>
                                                             <Tooltip content={<div>Delete this folder.</div>}>
                                                                 <Button variant="danger" className='button-file-control'
                                                                     onClick={handleDeleteFolderClick(row.prefix)}>

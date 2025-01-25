@@ -6,6 +6,7 @@ let accessKeyId = process.env.AWS_ACCESS_KEY_ID || '';
 let secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY || '';
 let region = process.env.AWS_DEFAULT_REGION || 'us-east-1';
 let endpoint = process.env.AWS_S3_ENDPOINT || '';
+let defaultBucket = process.env.AWS_S3_BUCKET || '';
 let hfToken = process.env.HF_TOKEN || '';
 let maxConcurrentTransfers = parseInt(process.env.MAX_CONCURRENT_TRANSFERS || '2', 10);
 
@@ -28,11 +29,13 @@ export const updateS3Config = (
   newSecretAccessKey: string,
   newRegion: string,
   newEndpoint: string,
+  newDefaultBucket: string,
 ): void => {
   accessKeyId = newAccessKeyId;
   secretAccessKey = newSecretAccessKey;
   region = newRegion;
   endpoint = newEndpoint;
+  defaultBucket = newDefaultBucket;
 
   // Reinitialize the S3 client
   s3Client = initializeS3Client();
@@ -44,6 +47,7 @@ export const getS3Config = (): any => {
     secretAccessKey,
     region,
     endpoint,
+    defaultBucket,
     s3Client,
   };
 };

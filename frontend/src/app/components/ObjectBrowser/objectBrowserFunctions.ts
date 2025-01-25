@@ -8,18 +8,22 @@ import Emitter from '../../utils/emitter';
 export const loadBuckets = (bucketName: string, history, setBucketsList) => {
     axios.get(`${config.backend_api_url}/buckets`)
         .then(response => {
-            const { owner, defaultBucket, buckets } = response.data;
-            const newBucketsState = new BucketsList(
-                buckets.map((bucket: any) => new Bucket(bucket.Name, bucket.CreationDate)),
-                new Owner(owner.DisplayName, owner.ID)
-            );
-            setBucketsList(newBucketsState);
-            if (bucketName === ":bucketName") {
-                if ( defaultBucket !== '' )
-                    history.push(`/objects/${defaultBucket}`);
-                else {
-                    history.push(`/objects/${buckets[0].Name}`);
+            if (response.status === 200) {
+                const { owner, defaultBucket, buckets } = response.data;
+                const newBucketsState = new BucketsList(
+                    buckets.map((bucket: any) => new Bucket(bucket.Name, bucket.CreationDate)),
+                    new Owner(owner.DisplayName, owner.ID)
+                );
+                setBucketsList(newBucketsState);
+                if (bucketName === ":bucketName") {
+                    if (defaultBucket !== '')
+                        history.push(`/objects/${defaultBucket}`);
+                    else {
+                        history.push(`/objects/${buckets[0].Name}`);
+                    }
                 }
+            } else {
+                Emitter.emit('notification', { variant: 'warning', title: 'Error fetching buckets', description: 'Failed to fetch buckets from the backend.' });
             }
         })
         .catch(error => {
@@ -61,6 +65,8 @@ export const refreshObjects = (bucketName: string, prefix: string, setDecodedPre
             }
         })
         .catch((error) => {
+            setS3Objects(null);
+            setS3Prefixes(null);
             console.error('Error fetching objects', error);
         });
 }

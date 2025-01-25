@@ -16,21 +16,22 @@ import {
 export default async (fastify: FastifyInstance): Promise<void> => {
   // Retrieve S3 settings
   fastify.get('/s3', async (req: FastifyRequest, reply: FastifyReply) => {
-    const { accessKeyId, secretAccessKey, region, endpoint } = getS3Config();
+    const { accessKeyId, secretAccessKey, region, endpoint, defaultBucket } = getS3Config();
     const settings = {
       accessKeyId: accessKeyId,
       secretAccessKey: secretAccessKey,
       region: region,
       endpoint: endpoint,
+      defaultBucket: defaultBucket,
     };
     reply.send({ settings });
   });
 
   // Update S3 settings
   fastify.put('/s3', async (req: FastifyRequest, reply: FastifyReply) => {
-    const { accessKeyId, secretAccessKey, region, endpoint } = req.body as any;
+    const { accessKeyId, secretAccessKey, region, endpoint, defaultBucket } = req.body as any;
     try {
-      updateS3Config(accessKeyId, secretAccessKey, region, endpoint);
+      updateS3Config(accessKeyId, secretAccessKey, region, endpoint, defaultBucket);
       reply.send({ message: 'Settings updated successfully' });
     } catch (error) {
       console.error('Error updating settings', error);
