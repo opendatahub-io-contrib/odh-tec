@@ -1,14 +1,13 @@
+import HfLogo from '@app/assets/bgimages/hf-logo.svg';
 import config from '@app/config';
+import { faBucket, faNetworkWired } from '@fortawesome/free-solid-svg-icons';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { Button, Content, ContentVariants, Flex, FlexItem, Form, FormGroup, PageSection, Slider, SliderOnChangeEvent, Tab, Tabs, TabTitleIcon, TabTitleText, TextInput, TextInputGroup, TextInputGroupMain, TextInputGroupUtilities } from '@patternfly/react-core';
+import { EyeIcon } from '@patternfly/react-icons';
 import axios from 'axios';
 import * as React from 'react';
-import { useHistory, useLocation, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import Emitter from '../../utils/emitter';
-import { Page, PageSection, Text, TextContent, TextVariants, Form, FormGroup, Button, TextInput, TextInputGroup, TextInputGroupMain, TextInputGroupUtilities, Flex, FlexItem, TabTitleIcon, Slider, SliderOnChangeEvent } from '@patternfly/react-core';
-import { Tabs, Tab, TabTitleText } from '@patternfly/react-core';
-import { EyeIcon } from '@patternfly/react-icons';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faBucket } from '@fortawesome/free-solid-svg-icons';
-import HfLogo from '@app/assets/bgimages/hf-logo.svg';
 
 interface SettingsProps { }
 
@@ -36,8 +35,20 @@ class HuggingFaceSettings {
     }
 }
 
+class ProxySettings {
+    httpProxy: string;
+    httpsProxy: string;
+    testUrl: string;
+
+    constructor(httpProxy: string, httpsProxy: string) {
+        this.httpProxy = httpProxy ?? '';
+        this.httpsProxy = httpsProxy ?? '';
+        this.testUrl = 'https://www.google.com';
+    }
+}
+
 const SettingsManagement: React.FunctionComponent<SettingsProps> = () => {
-    const history = useHistory();
+    const navigate = useNavigate();
     const location = useLocation();
     const params = useParams();
 
@@ -68,7 +79,7 @@ const SettingsManagement: React.FunctionComponent<SettingsProps> = () => {
             })
             .catch((error) => {
                 console.error(error);
-                Emitter.emit('error', 'Failed to fetch configuration settings.');
+                Emitter.emit('error', `Failed to fetch S3 settings: ${error.response?.data?.error ? `${error.response.data.error} - ` : ''}${error.response?.data?.message || 'Server error'}`);
             });
     }, []);
 
@@ -89,7 +100,7 @@ const SettingsManagement: React.FunctionComponent<SettingsProps> = () => {
             })
             .catch((error) => {
                 console.error(error);
-                Emitter.emit('notification', { variant: 'warning', title: '', description: 'Saving failed with the error: ' + error });
+                Emitter.emit('notification', { variant: 'warning', title: error.response?.data?.error || 'Save Failed', description: error.response?.data?.message || 'An unknown error occurred' });
             });
     };
 
@@ -100,7 +111,7 @@ const SettingsManagement: React.FunctionComponent<SettingsProps> = () => {
                 Emitter.emit('notification', { variant: 'success', title: '', description: 'Connection successful!' });
             })
             .catch((error) => {
-                Emitter.emit('notification', { variant: 'warning', title: '', description: 'Connection failed with the error: ' + error.response.data.message.Code });
+                Emitter.emit('notification', { variant: 'warning', title: error.response?.data?.error || 'Connection Test Failed', description: error.response?.data?.message || 'An unknown error occurred' });
             });
     }
 
@@ -121,7 +132,7 @@ const SettingsManagement: React.FunctionComponent<SettingsProps> = () => {
             })
             .catch((error) => {
                 console.error(error);
-                Emitter.emit('error', 'Failed to fetch configuration settings.');
+                Emitter.emit('error', `Failed to fetch HuggingFace settings: ${error.response?.data?.error ? `${error.response.data.error} - ` : ''}${error.response?.data?.message || 'Server error'}`);
             });
     }, []);
 
@@ -142,7 +153,7 @@ const SettingsManagement: React.FunctionComponent<SettingsProps> = () => {
             })
             .catch((error) => {
                 console.error(error);
-                Emitter.emit('notification', { variant: 'warning', title: '', description: 'Saving failed with the error: ' + error });
+                Emitter.emit('notification', { variant: 'warning', title: error.response?.data?.error || 'Save Failed', description: error.response?.data?.message || 'An unknown error occurred' });
             });
     };
 
@@ -154,7 +165,7 @@ const SettingsManagement: React.FunctionComponent<SettingsProps> = () => {
             })
             .catch((error) => {
                 console.error(error);
-                Emitter.emit('notification', { variant: 'warning', title: '', description: 'Connection failed with the error: ' + error.response.data.message.error });
+                Emitter.emit('notification', { variant: 'warning', title: error.response?.data?.error || 'Connection Test Failed', description: error.response?.data?.message || 'An unknown error occurred' });
             });
     }
 
@@ -172,7 +183,7 @@ const SettingsManagement: React.FunctionComponent<SettingsProps> = () => {
             })
             .catch((error) => {
                 console.error(error);
-                Emitter.emit('error', 'Failed to fetch configuration settings.');
+                Emitter.emit('error', `Failed to fetch Max Concurrent Transfers settings: ${error.response?.data?.error ? `${error.response.data.error} - ` : ''}${error.response?.data?.message || 'Server error'}`);
             });
     }, []);
 
@@ -184,24 +195,84 @@ const SettingsManagement: React.FunctionComponent<SettingsProps> = () => {
             })
             .catch((error) => {
                 console.error(error);
-                Emitter.emit('notification', { variant: 'warning', title: '', description: 'Saving failed with the error: ' + error });
+                Emitter.emit('notification', { variant: 'warning', title: error.response?.data?.error || 'Save Failed', description: error.response?.data?.message || 'An unknown error occurred' });
+            });
+    };
+
+    /* Proxy Settings Management */
+
+    const [proxySettings, setProxySettings] = React.useState<ProxySettings>(new ProxySettings('', ''));
+    const [proxySettingsChanged, setProxySettingsChanged] = React.useState<boolean>(false);
+
+    React.useEffect(() => {
+        axios.get(`${config.backend_api_url}/settings/proxy`)
+            .then((response) => {
+                const { settings } = response.data;
+                if (settings !== undefined) {
+                    setProxySettings(new ProxySettings(settings.httpProxy, settings.httpsProxy));
+                }
+            })
+            .catch((error) => {
+                console.error(error);
+                Emitter.emit('error', `Failed to fetch proxy settings: ${error.response?.data?.error ? `${error.response.data.error} - ` : ''}${error.response?.data?.message || 'Server error'}`);
+            });
+    }, []);
+
+    const handleProxyChange = (value, field) => {
+        setProxySettings(prevState => ({
+            ...prevState,
+            [field]: value,
+        }));
+        setProxySettingsChanged(true);
+    };
+
+    const handleSaveProxySettings = (event) => {
+        event.preventDefault();
+        axios.put(`${config.backend_api_url}/settings/proxy`, {
+            httpProxy: proxySettings.httpProxy,
+            httpsProxy: proxySettings.httpsProxy
+        })
+            .then((response) => {
+                Emitter.emit('notification', { variant: 'success', title: '', description: 'Proxy settings saved successfully!' });
+                setProxySettingsChanged(false);
+            })
+            .catch((error) => {
+                console.error(error);
+                Emitter.emit('notification', { variant: 'warning', title: error.response?.data?.error || 'Save Failed', description: error.response?.data?.message || 'An unknown error occurred' });
+            });
+    };
+
+    const handleTestProxyConnection = (event) => {
+        event.preventDefault();
+        axios.post(`${config.backend_api_url}/settings/test-proxy`, {
+            httpProxy: proxySettings.httpProxy, 
+            httpsProxy: proxySettings.httpsProxy, 
+            testUrl: proxySettings.testUrl
+        })
+            .then((response) => {
+                Emitter.emit('notification', { variant: 'success', title: '', description: 'Proxy connection successful!' });
+            })
+            .catch((error) => {
+                console.error(error);
+                Emitter.emit('notification', { variant: 'warning', title: error.response?.data?.error || 'Connection Test Failed', description: error.response?.data?.message || 'An unknown error occurred' });
             });
     };
 
     /* Render */
 
     return (
-        <Page className='buckets-list'>
-            <PageSection>
-                <TextContent>
-                    <Text component={TextVariants.h1}>Settings</Text>
-                </TextContent>
+        <div>
+            <PageSection hasBodyWrapper={false}>
+                <Content>
+                    <Content component={ContentVariants.h1}>Settings</Content>
+                </Content>
             </PageSection>
-            <PageSection>
+            <PageSection hasBodyWrapper={false}>
                 <Tabs
                     activeKey={activeTabKey}
                     onSelect={handleTabClick}
                     aria-label="Settings Tabs"
+                    isBox={false}
                     role="region"
                 >
                     <Tab
@@ -237,13 +308,11 @@ const SettingsManagement: React.FunctionComponent<SettingsProps> = () => {
                                         type={showS3SecretKey ? 'text' : 'password'}
                                     />
                                     <TextInputGroupUtilities>
-                                        <Button
+                                        <Button icon={<EyeIcon />}
                                             variant="plain"
                                             aria-label={showS3SecretKey ? 'Hide secret key' : 'Show secret key'}
                                             onClick={() => setS3ShowSecretKey(!showS3SecretKey)}
-                                        >
-                                            <EyeIcon />
-                                        </Button>
+                                        />
                                     </TextInputGroupUtilities>
                                 </TextInputGroup>
                             </FormGroup>
@@ -306,13 +375,11 @@ const SettingsManagement: React.FunctionComponent<SettingsProps> = () => {
                                         type={showHfToken ? 'text' : 'password'}
                                     />
                                     <TextInputGroupUtilities>
-                                        <Button
+                                        <Button icon={<EyeIcon />}
                                             variant="plain"
                                             aria-label={showHfToken ? 'Hide token' : 'Show token'}
                                             onClick={() => setHfShowToken(!showHfToken)}
-                                        >
-                                            <EyeIcon />
-                                        </Button>
+                                        />
                                     </TextInputGroupUtilities>
                                 </TextInputGroup>
                             </FormGroup>
@@ -339,21 +406,73 @@ const SettingsManagement: React.FunctionComponent<SettingsProps> = () => {
                         <Form onSubmit={handleSaveMaxConcurrentTransfers}
                             className='settings-form'>
                             <FormGroup label={"Max Concurrent Transfers: " + maxConcurrentTransfers} fieldId="maxConcurrentTransfers">
-                            <Slider
-                                hasTooltipOverThumb={false}
-                                value={maxConcurrentTransfers}
-                                min={1}
-                                max={10}
-                                className='form-settings-slider'
-                                onChange={(_event: SliderOnChangeEvent, value: number) => setMaxConcurrentTransfers(value)}
-                            />
+                                <Slider
+                                    hasTooltipOverThumb={false}
+                                    value={maxConcurrentTransfers}
+                                    min={1}
+                                    max={10}
+                                    className='form-settings-slider'
+                                    onChange={(_event: SliderOnChangeEvent, value: number) => setMaxConcurrentTransfers(value)}
+                                />
                             </FormGroup>
                             <Button type="submit" className='form-settings-submit'>Save Max Concurrent Transfers</Button>
                         </Form>
                     </Tab>
+                    <Tab eventKey={3}
+                        title={
+                            <>
+                                <TabTitleIcon>
+                                    <FontAwesomeIcon icon={faNetworkWired} />
+                                </TabTitleIcon>{' '}
+                                <TabTitleText>Proxy Settings</TabTitleText>{' '}
+                            </>
+                        }
+                        aria-label="Proxy settings">
+                        <Form onSubmit={handleSaveProxySettings}
+                            className='settings-form'>
+                            <FormGroup label="HTTP Proxy" fieldId="httpProxy">
+                                <TextInput
+                                    value={proxySettings.httpProxy}
+                                    onChange={(_event, value) => handleProxyChange(value, 'httpProxy')}
+                                    id="httpProxy"
+                                    name="httpProxy"
+                                    placeholder="http://proxy-server:port"
+                                    className='form-settings-long'
+                                />
+                            </FormGroup>
+                            <FormGroup label="HTTPS Proxy" fieldId="httpsProxy">
+                                <TextInput
+                                    value={proxySettings.httpsProxy}
+                                    onChange={(_event, value) => handleProxyChange(value, 'httpsProxy')}
+                                    id="httpsProxy"
+                                    name="httpsProxy"
+                                    placeholder="https://proxy-server:port"
+                                    className='form-settings-long'
+                                />
+                            </FormGroup>
+                            <FormGroup label="Test URL" fieldId="testUrl">
+                                <TextInput
+                                    value={proxySettings.testUrl}
+                                    onChange={(_event, value) => handleProxyChange(value, 'testUrl')}
+                                    id="testUrl"
+                                    name="testUrl"
+                                    placeholder="https://www.google.com"
+                                    className='form-settings-long'
+                                />
+                            </FormGroup>
+                            <Flex>
+                                <FlexItem>
+                                    <Button type="submit" className='form-settings-submit' isDisabled={!proxySettingsChanged}>Save Proxy Settings</Button>
+                                </FlexItem>
+                                <FlexItem>
+                                    <Button className='form-settings-submit' onClick={handleTestProxyConnection}>Test Connection</Button>
+                                </FlexItem>
+                            </Flex>
+                        </Form>
+                    </Tab>
                 </Tabs>
             </PageSection>
-        </Page>
+        </div>
     );
 };
 

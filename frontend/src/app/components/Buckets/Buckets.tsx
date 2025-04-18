@@ -4,24 +4,25 @@ import axios from 'axios';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faBucket, faTrash } from '@fortawesome/free-solid-svg-icons';
 import {
-    Button,
-    Card,
-    Flex,
-    FlexItem,
-    Form,
-    FormGroup,
-    Modal,
-    Page,
-    PageSection,
-    Text,
-    TextContent,
-    TextInput,
-    TextVariants,
+	Button,
+	Card,
+	Flex,
+	FlexItem,
+	Form,
+	FormGroup,
+	Page,
+	PageSection,
+	Content,
+	TextInput,
+	ContentVariants
 } from '@patternfly/react-core';
+import {
+	Modal
+} from '@patternfly/react-core/deprecated';
 import { Table, Thead, Tr, Th, Tbody, Td, ThProps } from '@patternfly/react-table';
 import { SearchIcon } from '@patternfly/react-icons';
 import Emitter from '../../utils/emitter';
-import { useHistory } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
 
 class Bucket {
@@ -62,7 +63,7 @@ interface BucketRow {
 
 
 const Buckets: React.FunctionComponent = () => {
-    const history = useHistory();
+    const navigate = useNavigate();
 
     // New bucket handling
     const [newBucketName, setNewBucketName] = React.useState('');
@@ -145,12 +146,13 @@ const Buckets: React.FunctionComponent = () => {
                         })
                         .catch(error => {
                             console.error(error);
+                            Emitter.emit('notification', { variant: 'warning', title: error.response?.data?.error || 'Error Fetching Buckets', description: error.response?.data?.message || 'Failed to fetch buckets from the backend.' });
                         });
                 })
                 .catch(error => {
-                    Emitter.emit('notification', { variant: 'warning', title: 'Bucket creation failed', description: 'Bucket ' + newBucketName + ' could not be created. Reason: ' + error.response.data.message.Code });
+                    Emitter.emit('notification', { variant: 'warning', title: error.response?.data?.error || 'Bucket Creation Failed', description: error.response?.data?.message || 'Bucket could not be created.' });
                     setIsCreateBucketModalOpen(false);
-                    console.log(error.response.data.message.Code);
+                    console.log(error.response?.data?.message || error.message);
                 });
         }
     };
@@ -203,11 +205,12 @@ const Buckets: React.FunctionComponent = () => {
                         })
                         .catch(error => {
                             console.error(error);
+                            Emitter.emit('notification', { variant: 'warning', title: error.response?.data?.error || 'Error Fetching Buckets', description: error.response?.data?.message || 'Failed to fetch buckets from the backend.' });
                         });
                 })
                 .catch(error => {
                     console.error(error);
-                    Emitter.emit('notification', { variant: 'warning', title: 'Bucket deletion failed', description: 'Bucket ' + selectedBucket + ' could not be deleted. Reason: ' + error.response.data.error });
+                    Emitter.emit('notification', { variant: 'warning', title: error.response?.data?.error || 'Bucket Deletion Failed', description: error.response?.data?.message || 'Bucket could not be deleted.' });
                 });
         }
     }
@@ -216,7 +219,6 @@ const Buckets: React.FunctionComponent = () => {
         setBucketToDelete('');
         setIsDeleteBucketModalOpen(false);
     }
-
 
     // Buckets and owner handling
     const [searchBucketText, setSearchBucketText] = React.useState('');
@@ -302,19 +304,20 @@ const Buckets: React.FunctionComponent = () => {
             })
             .catch(error => {
                 console.error(error);
+                Emitter.emit('notification', { variant: 'warning', title: error.response?.data?.error || 'Error Fetching Buckets', description: error.response?.data?.message || 'Failed to fetch buckets from the backend.' });
             });
     }, []);
 
 
 
     return (
-        <Page className='buckets-list'>
-            <PageSection>
-                <TextContent>
-                    <Text component={TextVariants.h1}>Buckets</Text>
-                </TextContent>
+        <div className='buckets-list'>
+            <PageSection hasBodyWrapper={false}>
+                <Content>
+                    <Content component={ContentVariants.h1}>S3 Buckets Management</Content>
+                </Content>
             </PageSection>
-            <PageSection>
+            <PageSection hasBodyWrapper={false}>
                 <Flex>
                     <FlexItem>
                         <TextInput
@@ -333,7 +336,7 @@ const Buckets: React.FunctionComponent = () => {
                     </FlexItem>
                 </Flex>
             </PageSection>
-            <PageSection >
+            <PageSection hasBodyWrapper={false} >
                 <Card component="div">
                     <Table aria-label="Buckets list" isStickyHeader>
                         <Thead>
@@ -349,7 +352,7 @@ const Buckets: React.FunctionComponent = () => {
                                 <Tr key={rowIndex}
                                     className='bucket-row'>
                                     <Td className='bucket-column'>
-                                        <Button variant="link" onClick={() => { history.push(`/objects/${row.name}`); }}><FontAwesomeIcon icon={faBucket} />&nbsp;{row.name}</Button>
+                                        <Button variant="link" onClick={() => { navigate(`/objects/${row.name}`); }}><FontAwesomeIcon icon={faBucket} />&nbsp;{row.name}</Button>
                                     </Td>
                                     <Td className='bucket-column'>{row.creation_date}</Td>
                                     <Td className='bucket-column'>{row.owner}</Td>
@@ -402,8 +405,8 @@ const Buckets: React.FunctionComponent = () => {
                         />
                     </FormGroup>
                 </Form>
-                <TextContent hidden={!newBucketNameRulesVisibility}>
-                    <Text component={TextVariants.small} className="bucket-name-rules">
+                <Content hidden={!newBucketNameRulesVisibility}>
+                    <Content component={ContentVariants.small} className="bucket-name-rules">
                         Bucket names must:
                         <ul>
                             <li>be unique,</li>
@@ -414,8 +417,8 @@ const Buckets: React.FunctionComponent = () => {
                             <li>not contain consecutive periods or dashes adjacent to periods,</li>
                             <li>not be formatted as an IP address.</li>
                         </ul>
-                    </Text>
-                </TextContent>
+                    </Content>
+                </Content>
             </Modal>
             <Modal
                 title={"Delete bucket?"}
@@ -432,14 +435,14 @@ const Buckets: React.FunctionComponent = () => {
                     </Button>
                 ]}
             >
-                <TextContent>
-                    <Text component={TextVariants.p}>
+                <Content>
+                    <Content component={ContentVariants.p}>
                         This action cannot be undone.
-                    </Text>
-                    <Text component={TextVariants.p}>
+                    </Content>
+                    <Content component={ContentVariants.p}>
                         Type <strong>{selectedBucket}</strong> to confirm deletion.
-                    </Text>
-                </TextContent>
+                    </Content>
+                </Content>
                 <TextInput
                     id="delete-modal-input"
                     aria-label="Delete modal input"
@@ -452,8 +455,7 @@ const Buckets: React.FunctionComponent = () => {
                     }}
                 />
             </Modal>
-        </Page>
-
+        </div>
     )
 };
 

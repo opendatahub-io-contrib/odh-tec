@@ -17,7 +17,7 @@ import Stack from "@mui/material/Stack"
 import Switch from "@mui/material/Switch"
 import TextField from "@mui/material/TextField"
 import Typography from "@mui/material/Typography"
-import { Page, PageSection, Text, TextContent, TextVariants } from "@patternfly/react-core"
+import { Page, PageSection, Content, ContentVariants } from "@patternfly/react-core"
 import React, { useState } from "react"
 
 interface VramEstimatorProps { }
@@ -32,14 +32,14 @@ const VramEstimator: React.FunctionComponent<VramEstimatorProps> = () => {
     const resultEstimation = estimateResult({ modelConfig, runConfig, unit: resultUnit })
 
     return (
-        <Page className='buckets-list'>
-            <PageSection>
-                <TextContent>
-                    <Text component={TextVariants.h1}>VRAM Estimator</Text>
-                    <Text component={TextVariants.h3}>Estimate GPU VRAM usage of transformer-based models.</Text>
-                </TextContent>
+        <div>
+            <PageSection hasBodyWrapper={false}>
+                <Content>
+                    <Content component={ContentVariants.h1}>VRAM Estimator</Content>
+                    <Content component={ContentVariants.h3}>Estimate GPU VRAM usage of transformer-based models.</Content>
+                </Content>
             </PageSection>
-            <PageSection>
+            <PageSection hasBodyWrapper={false}>
                 <Grid container spacing={2} justifyContent="center" className="vram-calculator-section">
                     <Grid item xs={12} sm={6}>
                         <Stack spacing={2} justifyItems="center">
@@ -567,7 +567,7 @@ const VramEstimator: React.FunctionComponent<VramEstimatorProps> = () => {
                     </Typography>
                 </Grid>
             </PageSection>
-        </Page>
+        </div>
     );
 }
 

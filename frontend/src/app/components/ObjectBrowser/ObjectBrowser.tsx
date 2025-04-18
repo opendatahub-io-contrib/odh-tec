@@ -2,24 +2,45 @@ import config from '@app/config';
 import { faDownload, faEye, faFile, faFolder, faTrash } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
-    Breadcrumb, BreadcrumbItem, Button, Card,
+    Breadcrumb,
+    BreadcrumbItem,
+    Button,
+    Card,
     DropEvent,
-    FileUpload, Flex, FlexItem, Form, FormGroup, FormSelect, FormSelectOption,
+    FileUpload,
+    Flex,
+    FlexItem,
+    Form,
+    FormGroup,
+    FormSelect,
+    FormSelectOption,
     HelperText,
     HelperTextItem,
-    Modal,
     MultipleFileUpload,
     MultipleFileUploadMain,
     MultipleFileUploadStatus,
     MultipleFileUploadStatusItem,
-    Page, PageSection, Progress, ProgressSize, Text, TextContent, TextInput, TextVariants, ToolbarContent, ToolbarGroup, ToolbarItem, Tooltip
+    Page,
+    PageSection,
+    Progress,
+    ProgressSize,
+    Content,
+    TextInput,
+    ContentVariants,
+    ToolbarContent,
+    ToolbarGroup,
+    ToolbarItem,
+    Tooltip
 } from '@patternfly/react-core';
+import {
+    Modal
+} from '@patternfly/react-core/deprecated';
 import { SearchIcon } from '@patternfly/react-icons';
 import UploadIcon from '@patternfly/react-icons/dist/esm/icons/upload-icon';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 import axios from 'axios';
 import * as React from 'react';
-import { useHistory, useLocation, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import Emitter from '../../utils/emitter';
 import DocumentRenderer from '../DocumentRenderer/DocumentRenderer';
 import { createFolder, deleteFolder, deleteFile, loadBuckets, refreshObjects } from './objectBrowserFunctions';
@@ -36,7 +57,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
     */
 
     // React hooks
-    const history = useHistory();
+    const navigate = useNavigate();
     const location = useLocation();
     const abortUploadController = React.useRef<AbortController | null>(null);
 
@@ -46,10 +67,14 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
     React.useEffect(() => {
         axios.get(`${config.backend_api_url}/settings/max-concurrent-transfers`)
             .then(response => {
-                setMaxConcurrentTransfers(response.data.maxConcurrentTransfers);
+                const { maxConcurrentTransfers } = response.data;
+                if (maxConcurrentTransfers !== undefined) {
+                    setMaxConcurrentTransfers(maxConcurrentTransfers);
+                }
             })
             .catch(error => {
-                console.error('Error getting max concurrent transfers', error);
+                console.error(error);
+                Emitter.emit('notification', { variant: 'warning', title: error.response?.data?.error || 'Error Fetching Settings', description: error.response?.data?.message || 'Failed to fetch max concurrent transfers setting.' });
             });
     }, []);
 
@@ -60,30 +85,46 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
     // Buckets handling
     const [bucketsList, setBucketsList] = React.useState<BucketsList | null>(null);
     const [formSelectBucket, setFormSelectBucket] = React.useState(bucketName);
-    const [textInputBucket, setTextInputBucket] = React.useState('bucketName');
+    const [textInputBucket, setTextInputBucket] = React.useState(bucketName === ":bucketName" ? "" : bucketName);
 
     // Load buckets at startup and when location changes
     React.useEffect(() => {
-        loadBuckets(bucketName, history, setBucketsList);
-        setFormSelectBucket(bucketName);
+        if (bucketName) {
+            loadBuckets(bucketName, navigate, (updatedBucketsList) => {
+                setBucketsList(updatedBucketsList);
+                if (bucketName === ':bucketName') {
+                    setFormSelectBucket(updatedBucketsList?.buckets[0]?.Name || '');
+                    setTextInputBucket(updatedBucketsList?.buckets[0]?.Name || '');
+                } else {
+                    setFormSelectBucket(bucketName);
+                    setTextInputBucket(bucketName);
+                }
+            });
+        }
     }, [location]);
 
     // Refresh objects from the bucket when location changes
     React.useEffect(() => {
-        refreshObjects(bucketName, prefix, setDecodedPrefix, setS3Objects, setS3Prefixes);
-        setFormSelectBucket(bucketName);
-        setTextInputBucket(bucketName);
+        if (bucketName) {
+            refreshObjects(bucketName, prefix || '', setDecodedPrefix, setS3Objects, setS3Prefixes);
+            setFormSelectBucket(bucketName);
+            if (bucketName === ':bucketName') {
+                setTextInputBucket('');
+            } else {
+                setTextInputBucket(bucketName);
+            }
+        }
     }, [location, prefix]);
 
     // Handle bucket change in the dropdown
     const handleBucketSelectorChange = (_event: React.FormEvent<HTMLSelectElement>, value: string) => {
         setFormSelectBucket(value);
-        history.push(`/objects/${value}`);
+        setTextInputBucket(value);
+        navigate(`/objects/${value}`);
     }
 
     const handleBucketTextInputSend = (_event: React.MouseEvent<HTMLButtonElement>) => {
-        //setFormSelectBucket(bucketName);
-        history.push(`/objects/${textInputBucket}`);
+        navigate(`/objects/${textInputBucket}`);
     }
 
     /*
@@ -164,7 +205,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
         setS3Objects(null);
         setS3Prefixes(null);
         setDecodedPrefix(plainTextPrefix);
-        history.push(plainTextPrefix !== '' ? `/objects/${bucketName}/${btoa(plainTextPrefix)}` : `/objects/${bucketName}`);
+        navigate(plainTextPrefix !== '' ? `/objects/${bucketName}/${btoa(plainTextPrefix)}` : `/objects/${bucketName}`);
     }
 
     /*
@@ -192,6 +233,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
             })
             .catch((error) => {
                 console.error('Error viewing object', error);
+                Emitter.emit('notification', { variant: 'warning', title: error.response?.data?.error || 'Error Viewing File', description: error.response?.data?.message || 'Failed to retrieve the object content.' });
             });
     }
 
@@ -279,6 +321,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
             })
             .catch(error => {
                 console.error('Error aborting upload', error);
+                Emitter.emit('notification', { variant: 'warning', title: error.response?.data?.error || 'Error Aborting Upload', description: error.response?.data?.message || 'Failed to abort the upload process.' });
             });
         resetSingleFileUploadPanel();
     }
@@ -329,12 +372,12 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                 const oldFileName = singleFilename;
                 Emitter.emit('notification', { variant: 'success', title: 'File uploaded', description: 'File "' + oldFileName + '" has been successfully uploaded.' });
                 resetSingleFileUploadPanel();
-                history.push(`/objects/${bucketName}/${btoa(decodedPrefix)}`);
+                navigate(`/objects/${bucketName}/${btoa(decodedPrefix)}`);
 
             })
             .catch(error => {
                 console.error('Error uploading file', error);
-                Emitter.emit('notification', { variant: 'warning', title: 'File upload failed', description: String(error) });
+                Emitter.emit('notification', { variant: 'warning', title: error.response?.data?.error || 'File Upload Failed', description: error.response?.data?.message || String(error) });
                 resetSingleFileUploadPanel();
             });
     }
@@ -405,7 +448,57 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
 
     const handleFileDrop = async (_event: DropEvent, droppedFiles: File[]) => {
         console.log('Dropped files', droppedFiles);
-        const fullDroppedFiles = droppedFiles as ExtendedFile[]; // cast to uploadedFile type to read "path" property
+        // Cast to ExtendedFile type and process paths to remove eventual leading "./"
+        const fullDroppedFiles: ExtendedFile[] = droppedFiles.map(originalFile => {
+            // 1. Determine the path for the file.
+            // Prefer webkitRelativePath for dropped folders, then an existing .path, fallback to file.name.
+            let pathValue: string;
+            const webkitPath = (originalFile as any).webkitRelativePath;
+            const directPath = (originalFile as any).path;
+
+            if (typeof webkitPath === 'string' && webkitPath.trim() !== '') {
+                pathValue = webkitPath;
+            } else if (typeof directPath === 'string' && directPath.trim() !== '') {
+                pathValue = directPath;
+            } else {
+                pathValue = originalFile.name;
+            }
+
+            // Process the path remove leading "./"
+            let processedPath = pathValue.startsWith('./') ? pathValue.substring(2) : pathValue;
+            if (!processedPath && originalFile.name) { // Ensure path is not empty
+                processedPath = originalFile.name;
+            }
+
+
+            // 2. Create a new File object from the original file's content and metadata.
+            // This ensures it's a proper File instance that FormData can handle.
+            const newFileInstance = new File(
+                [originalFile], // The content of the new file is the original file itself
+                originalFile.name, // Use the original file's name for the File object's name property
+                {
+                    type: originalFile.type,
+                    lastModified: originalFile.lastModified,
+                }
+            );
+
+            // 3. Cast the new File instance to ExtendedFile and add custom properties.
+            const extendedFile = newFileInstance as ExtendedFile;
+
+            // Define 'path' as an own, writable property on the new File instance.
+            Object.defineProperty(extendedFile, 'path', {
+                value: processedPath, // Store the processed path here
+                writable: true,
+                enumerable: true,
+                configurable: true
+            });
+
+            // Add other custom properties
+            extendedFile.uploadProgress = 0;
+            extendedFile.uploadS3Progress = 0;
+
+            return extendedFile;
+        });
         // identify what, if any, files are re-uploads of already uploaded files
         // filtering on full path in case multiple folders gave the same file
         const currentFilePaths = currentFiles.map((file) => file.path);
@@ -447,7 +540,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
     // Processes a file upload
     const handleFileUpload = async (file: File): Promise<void> => {
         const fullFile = file as ExtendedFile;
-        const fullPath = decodedPrefix + fullFile.path.replace(/^\//, ''); // remove leading slash in case of folder upload
+        const fullPath = decodedPrefix + fullFile.path.replace(/^\//, '').replace(/^\.\//, ''); // remove leading slash in case of folder upload or ./ in case of files
 
         if (uploadPercentages[fullPath]) { // File already in upload progress, skipping
             return;
@@ -479,7 +572,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                     }
                     return prevUploadedFiles;
                 });
-                refreshObjects(bucketName, prefix, setDecodedPrefix, setS3Objects, setS3Prefixes);
+                refreshObjects(bucketName!, prefix!, setDecodedPrefix, setS3Objects, setS3Prefixes);
                 eventSource.close();
             }
         }
@@ -494,7 +587,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
         })
             .catch(error => {
                 console.error('Error uploading file', error);
-                Emitter.emit('notification', { variant: 'warning', title: 'File upload failed', description: String(error) });
+                Emitter.emit('notification', { variant: 'warning', title: error.response?.data?.error || 'File Upload Failed', description: error.response?.data?.message || String(error) });
                 setUploadedFiles((prevUploadedFiles) => [
                     ...prevUploadedFiles,
                     { loadError: error, fileName: fullFile.name, loadResult: 'danger', path: fullPath }
@@ -551,8 +644,9 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
         if (!validateFileToDelete()) {
             console.log('Invalid file to delete');
             return;
-        } else {
-            deleteFile(bucketName, decodedPrefix, selectedFile, history, setFileToDelete, setIsDeleteFileModalOpen);
+        }
+        if (selectedFile) {
+            deleteFile(bucketName!, decodedPrefix, selectedFile, navigate, setFileToDelete, setIsDeleteFileModalOpen);
         }
     }
 
@@ -590,7 +684,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
             console.log('Invalid folder to delete');
             return;
         } else {
-            deleteFolder(bucketName, decodedPrefix, selectedFolder, history, setFolderToDelete, setIsDeleteFolderModalOpen);
+            deleteFolder(bucketName!, decodedPrefix, selectedFolder, navigate, setFolderToDelete, setIsDeleteFolderModalOpen);
         }
     }
 
@@ -634,7 +728,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
             alert('Invalid folder name');
             return;
         } else {
-            createFolder(bucketName, decodedPrefix, newFolderName, history, setNewFolderName, setIsCreateFolderModalOpen);
+            createFolder(bucketName!, decodedPrefix, newFolderName, navigate, setNewFolderName, setIsCreateFolderModalOpen);
         }
     }
 
@@ -651,15 +745,17 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
         setIsImportModelModalOpen(!isImportModelModalOpen);
     }
 
-    const handleImportModelCancel = (_event: React.MouseEvent) => {
+    const handleImportModelClose = (_event: React.MouseEvent) => {
         setIsImportModelModalOpen(false);
         setModelName('');
     }
 
     interface DataValue {
-        loaded: number;
-        status: string;
-        total: number;
+        loaded?: number;
+        status?: string;
+        total?: number;
+        error?: string;
+        message?: string;
     }
 
     const handleImportModelConfirm = (_event: React.MouseEvent) => {
@@ -670,9 +766,16 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                 setModelFiles(Object.keys(data));
             }
             Object.entries(data).forEach(([name, value]) => {
-                const { loaded, status, total } = value as DataValue;
-                console.log(`Name: ${name}, Loaded: ${loaded}, Status: ${status}`);
-                updateS3Progress(name, Math.round((loaded / total) * 100), status);
+                const { loaded, status, total, error, message } = value as DataValue;
+                if (error) {
+                    Emitter.emit('notification', { variant: 'warning', title: 'Model file import error', description: `Error importing model file "${name}": ${error} - ${message}` });
+                    return;
+                } else {
+                    console.log(`Name: ${name}, Loaded: ${loaded}, Status: ${status}`);
+                    if (loaded !== undefined && total !== undefined) {
+                        updateS3Progress(name, Math.round((loaded / total) * 100), status);
+                    }
+                }
             });
             const allCompleted = Object.entries(data).every(([_, value]) => {
                 const { status } = value as DataValue;
@@ -686,7 +789,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                 setModelFiles([]);
                 setUploadToS3Percentages({});
                 setIsImportModelModalOpen(false);
-                history.push(`/objects/${bucketName}/${btoa(decodedPrefix)}`);
+                navigate(`/objects/${bucketName}/${btoa(decodedPrefix)}`);
             }
         }
 
@@ -705,38 +808,37 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
             });
     }
     return (
-        <Page className='buckets-list'>
-            <PageSection>
-                <TextContent>
-                    <Text component={TextVariants.h1}>Objects</Text>
-                </TextContent>
+        <div>
+            <PageSection hasBodyWrapper={false}>
+                <Content component={ContentVariants.h1}>S3 Objects Browser</Content>
             </PageSection>
-            <PageSection>
-                <Flex direction={{ default: 'column' }}>
-                    <FlexItem><Flex>
-                        <FlexItem>
-                            <Text component={TextVariants.p}>
-                                Bucket Selection:
-                            </Text>
-                        </FlexItem>
-                        <FlexItem>
-                            <FormSelect className='bucket-select' value={formSelectBucket}
-                                aria-label="FormSelect Input"
-                                ouiaId="BasicFormSelect"
-                                onChange={handleBucketSelectorChange}>
-                                {bucketsList?.buckets.map(bucket => (
-                                    <FormSelectOption key={bucket.Name} value={bucket.Name} label={bucket.Name} />
-                                ))}
-                            </FormSelect>
-                        </FlexItem>
-                    </Flex>
+            <PageSection hasBodyWrapper={false} isFilled={true} className='object-browser-page-section'>
+                <Flex direction={{ default: 'row' }}>
+                    <FlexItem>
+                        <Flex>
+                            <FlexItem>
+                                <Content component={ContentVariants.p}>
+                                    Bucket Selection:
+                                </Content>
+                            </FlexItem>
+                            <FlexItem>
+                                <FormSelect className='bucket-select' value={formSelectBucket}
+                                    aria-label="FormSelect Input"
+                                    ouiaId="BasicFormSelect"
+                                    onChange={handleBucketSelectorChange}>
+                                    {bucketsList?.buckets.map(bucket => (
+                                        <FormSelectOption key={bucket.Name} value={bucket.Name} label={bucket.Name} />
+                                    ))}
+                                </FormSelect>
+                            </FlexItem>
+                        </Flex>
                     </FlexItem>
                     <FlexItem>
                         <Flex>
                             <FlexItem>
-                                <Text component={TextVariants.p}>
-                                    Browsing objects in bucket :
-                                </Text>
+                                <Content component={ContentVariants.p}>
+                                    Bucket override:
+                                </Content>
                             </FlexItem>
                             <FlexItem>
                                 <TextInput
@@ -754,54 +856,54 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                                 />
                             </FlexItem>
                             <FlexItem>
-                            <Button variant="secondary" onClick={handleBucketTextInputSend} ouiaId="RefreshBucket">
-                                Set bucket
-                            </Button>
+                                <Button variant="secondary" onClick={handleBucketTextInputSend} ouiaId="RefreshBucket">
+                                    Set bucket
+                                </Button>
                             </FlexItem>
                         </Flex>
                     </FlexItem>
                 </Flex>
             </PageSection>
-            <PageSection>
-                <Flex direction={{ default: 'column' }}>
+            <PageSection hasBodyWrapper={false} isFilled={true}>
+                <Flex>
                     <FlexItem>
-                        <Flex>
-                            <FlexItem>
-                                <Breadcrumb ouiaId="PrefixBreadcrumb">
-                                    <BreadcrumbItem
-                                        to={`/objects/${bucketName}`}>
-                                        <Button variant="link"
-                                            className='breadcrumb-button'
-                                            onClick={handlePrefixClick('')}
-                                            aria-label='bucket-name'
-                                        >
-                                            {bucketName}
-                                        </Button>
-                                    </BreadcrumbItem>
-                                    {decodedPrefix.slice(0, -1).split('/').map((part, index) => (
-                                        <BreadcrumbItem
-                                            key={index}
-                                        >
-                                            <Button variant="link"
-                                                className='breadcrumb-button'
-                                                onClick={handlePrefixClick(decodedPrefix.slice(0, -1).split('/').slice(0, index + 1).join('/') + '/')}
-                                                isDisabled={index === decodedPrefix.slice(0, -1).split('/').length - 1}
-                                                aria-label='folder-name'
-                                            >
-                                                {part}
-                                            </Button>
-                                        </BreadcrumbItem>
-                                    ))
-                                    }
-                                </Breadcrumb>
-                            </FlexItem>
-                            <FlexItem>
-                                <Button variant="secondary" onClick={copyPrefixToClipboard} className='copy-path-button' ouiaId="CopyPath">
-                                    Copy Path
+                        <Breadcrumb ouiaId="PrefixBreadcrumb">
+                            <BreadcrumbItem
+                                to={`/objects/${bucketName}`}>
+                                <Button variant="link"
+                                    className='breadcrumb-button'
+                                    onClick={handlePrefixClick('')}
+                                    aria-label='bucket-name'
+                                >
+                                    {bucketName === ':bucketName' ? bucketsList?.buckets?.[0]?.Name : bucketName}
                                 </Button>
-                            </FlexItem>
-                        </Flex>
+                            </BreadcrumbItem>
+                            {decodedPrefix.slice(0, -1).split('/').map((part, index) => (
+                                <BreadcrumbItem
+                                    key={index}
+                                >
+                                    <Button variant="link"
+                                        className='breadcrumb-button'
+                                        onClick={handlePrefixClick(decodedPrefix.slice(0, -1).split('/').slice(0, index + 1).join('/') + '/')}
+                                        isDisabled={index === decodedPrefix.slice(0, -1).split('/').length - 1}
+                                        aria-label='folder-name'
+                                    >
+                                        {part}
+                                    </Button>
+                                </BreadcrumbItem>
+                            ))
+                            }
+                        </Breadcrumb>
                     </FlexItem>
+                    <FlexItem>
+                        <Button variant="secondary" onClick={copyPrefixToClipboard} className='copy-path-button' ouiaId="CopyPath">
+                            Copy Path
+                        </Button>
+                    </FlexItem>
+                </Flex>
+            </PageSection>
+            <PageSection hasBodyWrapper={false} isFilled={true}>
+                <Flex direction={{ default: 'column' }}>
                     <FlexItem>
                         <Flex>
                             <FlexItem>
@@ -862,9 +964,9 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                                             <Td className='bucket-column align-right'>
                                                 <ToolbarContent>
                                                     <ToolbarGroup
-                                                        variant="icon-button-group"
-                                                        align={{ default: 'alignRight' }}
-                                                        spacer={{ default: 'spacerMd', md: 'spacerMd' }}
+                                                        variant="action-group-plain"
+                                                        align={{ default: "alignEnd" }}
+                                                        gap={{ default: "gapMd", md: "gapMd" }}
                                                     >
                                                         <ToolbarItem>
                                                             <Tooltip content={<div>Delete this folder.</div>}>
@@ -892,11 +994,11 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                                             <Td className='bucket-column align-right'>
                                                 <ToolbarContent>
                                                     <ToolbarGroup
-                                                        variant="icon-button-group"
-                                                        align={{ default: 'alignRight' }}
-                                                        spacer={{ default: 'spacerMd', md: 'spacerMd' }}
+                                                        variant="action-group-plain"
+                                                        align={{ default: "alignEnd" }}
+                                                        gap={{ default: "gapMd", md: "gapMd" }}
                                                     >
-                                                        <ToolbarItem spacer={{ default: 'spacerLg' }}>
+                                                        <ToolbarItem gap={{ default: "gapLg" }}>
                                                             <Tooltip content={<div>View this file.</div>}>
                                                                 <Button variant="primary" className='button-file-control'
                                                                     isDisabled={!validateFileView(row.key.split('/').pop() || '', row.originalSize)}
@@ -905,7 +1007,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                                                                 </Button>
                                                             </Tooltip>
                                                         </ToolbarItem>
-                                                        <ToolbarItem spacer={{ default: 'spacerLg' }}>
+                                                        <ToolbarItem gap={{ default: "gapLg" }}>
                                                             <Tooltip content={<div>Download this file.</div>}>
                                                                 <Button component="a" variant="primary" className='button-file-control'
                                                                     download={row.key.split('/').pop()}
@@ -934,19 +1036,19 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                         </Card>
                         <Flex direction={{ default: 'column' }} >
                             <FlexItem className='file-list-notes' align={{ default: 'alignRight' }}>
-                                <Text component={TextVariants.small}>
+                                <Content component={ContentVariants.small}>
                                     File viewer is only enabled for files smaller than 1MB and supported types.
-                                </Text>
+                                </Content>
                             </FlexItem>
                             <FlexItem className='file-list-notes' align={{ default: 'alignRight' }}>
-                                <Text component={TextVariants.small}>
+                                <Content component={ContentVariants.small}>
                                     Deleting the last item in a folder will delete the folder.
-                                </Text>
+                                </Content>
                             </FlexItem>
                             <FlexItem className='file-list-notes' align={{ default: 'alignRight' }}>
-                                <Text component={TextVariants.small}>
+                                <Content component={ContentVariants.small}>
                                     Download of large files may fail.
-                                </Text>
+                                </Content>
                             </FlexItem>
                         </Flex>
                     </FlexItem>
@@ -981,14 +1083,14 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                     </Button>
                 ]}
             >
-                <TextContent>
-                    <Text component={TextVariants.p}>
+                <Content>
+                    <Content component={ContentVariants.p}>
                         This action cannot be undone.
-                    </Text>
-                    <Text component={TextVariants.p}>
+                    </Content>
+                    <Content component={ContentVariants.p}>
                         Type <strong>{selectedFile.split('/').pop()}</strong> to confirm deletion.
-                    </Text>
-                </TextContent>
+                    </Content>
+                </Content>
                 <TextInput
                     id="delete-modal-input"
                     aria-label="Delete modal input"
@@ -1016,14 +1118,14 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                     </Button>
                 ]}
             >
-                <TextContent>
-                    <Text component={TextVariants.p}>
+                <Content>
+                    <Content component={ContentVariants.p}>
                         This action cannot be undone.
-                    </Text>
-                    <Text component={TextVariants.p}>
+                    </Content>
+                    <Content component={ContentVariants.p}>
                         Type <strong>{selectedFolder.slice(0, -1).split('/').pop()}</strong> to confirm deletion.
-                    </Text>
-                </TextContent>
+                    </Content>
+                </Content>
                 <TextInput
                     id="delete-folder-modal-input"
                     aria-label="Delete folder modal input"
@@ -1074,15 +1176,15 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                         />
                     </FormGroup>
                 </Form>
-                <TextContent hidden={!newFolderNameRulesVisibility}>
-                    <Text component={TextVariants.small} className="bucket-name-rules">
+                <Content hidden={!newFolderNameRulesVisibility}>
+                    <Content component={ContentVariants.small} className="bucket-name-rules">
                         Folder names must:
                         <ul>
                             <li>be unique,</li>
                             <li>only contain lowercase letters, numbers and hyphens,</li>
                         </ul>
-                    </Text>
-                </TextContent>
+                    </Content>
+                </Content>
             </Modal>
             <Modal
                 title="Import a model from Hugging Face"
@@ -1093,8 +1195,8 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                     <Button key="import" variant="primary" onClick={handleImportModelConfirm} isDisabled={(modelName.length < 1)}>
                         Import
                     </Button>,
-                    <Button key="cancel" variant="link" onClick={handleImportModelCancel}>
-                        Cancel
+                    <Button key="cancel" variant="link" onClick={handleImportModelClose}>
+                        Close
                     </Button>
                 ]}
                 ouiaId="ImportModelModal"
@@ -1202,7 +1304,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                     )}
                 </MultipleFileUpload>
             </Modal>
-        </Page>
+        </div>
     );
 };
 

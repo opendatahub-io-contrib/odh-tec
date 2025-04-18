@@ -42,7 +42,10 @@ export default async (fastify: FastifyInstance): Promise<void> => {
         odhTecConfig = {};
       } else {
         // Other errors
-        reply.code(500).send({ message: 'Error reading config file', error });
+        reply.code(500).send({
+          error: error.name || 'File system error',
+          message: error.message || 'Error reading config file',
+        });
         return;
       }
     }
@@ -58,7 +61,10 @@ export default async (fastify: FastifyInstance): Promise<void> => {
       await fs.promises.writeFile(configFilePath, JSON.stringify(odhTecConfig, null, 2));
       reply.send({ message: 'Disclaimer status updated' });
     } catch (error) {
-      reply.code(500).send({ message: 'Error writing config file', error });
+      reply.code(500).send({
+        error: error.name || 'File system error',
+        message: error.message || 'Error writing config file',
+      });
     }
   });
 };

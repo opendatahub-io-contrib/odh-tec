@@ -1,30 +1,36 @@
+import imgAvatar from '@app/assets/bgimages/default-user.svg';
+import logoReverse from '@app/assets/bgimages/odh-logo-dark-theme.svg';
+import logoStd from '@app/assets/bgimages/odh-logo-light-theme.svg';
+import { useUser } from '@app/components/UserContext/UserContext';
 import config from '@app/config';
-import logo from '@app/assets/bgimages/odh-logo.svg';
 import { IAppRoute, IAppRouteGroup, routes } from '@app/routes';
 import {
   Alert,
   AlertActionCloseButton,
   AlertGroup,
   AlertProps,
+  Avatar,
   Brand,
   Button,
   ButtonVariant,
+  Content,
+  ContentVariants,
   Dropdown,
+  DropdownGroup,
   DropdownItem,
   DropdownList,
   EmptyState,
   EmptyStateBody,
-  EmptyStateHeader,
-  EmptyStateIcon,
   EmptyStateVariant,
+  Flex,
   Masthead,
   MastheadBrand,
   MastheadContent,
+  MastheadLogo,
   MastheadMain,
   MastheadToggle,
   MenuToggle,
   MenuToggleElement,
-  Modal,
   Nav,
   NavExpandable,
   NavItem,
@@ -44,27 +50,71 @@ import {
   PageToggleButton,
   Popover,
   SkipToContent,
-  Text,
-  TextContent,
-  TextVariants,
+  ToggleGroup,
+  ToggleGroupItem,
   Toolbar,
   ToolbarContent,
   ToolbarGroup,
   ToolbarItem
 } from '@patternfly/react-core';
+import {
+  Modal
+} from '@patternfly/react-core/deprecated';
 import { BarsIcon, EllipsisVIcon, QuestionCircleIcon, SearchIcon } from '@patternfly/react-icons';
+import MoonIcon from '@patternfly/react-icons/dist/esm/icons/moon-icon';
+import SunIcon from '@patternfly/react-icons/dist/esm/icons/sun-icon';
+import axios from 'axios';
 import * as React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
+import { v4 as uuidv4 } from 'uuid';
+import { supportedLngs } from '../../../i18n/config';
 import Emitter from '../../utils/emitter';
-import axios from 'axios';
 
 interface IAppLayout {
   children: React.ReactNode;
 }
 
 const AppLayout: React.FunctionComponent<IAppLayout> = ({ children }) => {
+  // Theme
+  const [isDarkTheme, setIsDarkTheme] = React.useState(false);
 
+  // Language
+  const [selectedLanguage, setSelectedLanguage] = React.useState('en');
+  const onChangeLanguage = (_event: React.FormEvent<HTMLSelectElement>, language: string) => {
+    setSelectedLanguage(language);
+  };
+
+  //i18n
+  const { t, i18n } = useTranslation();
+  React.useEffect(() => {
+    i18n.changeLanguage(selectedLanguage);
+  }, [selectedLanguage]);
+
+  // User
+  const { userName, setUserName } = useUser();
+
+  React.useEffect(() => {
+    const fetchUserInfo = async () => {
+      try {
+        // Get headers from current page
+        const response = await fetch(window.location.href, {
+          method: 'HEAD',
+          credentials: 'same-origin' // Include cookies in the request
+        });
+
+        const entries = [...response.headers.entries()];
+        const gapAuthHeader = entries.find(entry => entry[0] === 'gap-auth');
+        const gapAuthValue = gapAuthHeader ? gapAuthHeader[1] : 'user@domain.com';
+        setUserName(gapAuthValue);
+      } catch (error) {
+        console.error('Error fetching user info:', error);
+      }
+    }
+    fetchUserInfo();
+  }, []);
+
+  // Notifications
   interface NotificationProps {
     title: string;
     srTitle: string;
@@ -74,6 +124,18 @@ const AppLayout: React.FunctionComponent<IAppLayout> = ({ children }) => {
     description: string;
     isNotificationRead: boolean;
   }
+
+  const maxDisplayedAlerts = 3;
+  const minAlerts = 0;
+  const maxAlerts = 100;
+  const alertTimeout = 8000;
+
+  const [isDrawerExpanded, setDrawerExpanded] = React.useState(false);
+  const [openDropdownKey, setOpenDropdownKey] = React.useState<React.Key | null>(null);
+  const [overflowMessage, setOverflowMessage] = React.useState<string>('');
+  const [maxDisplayed, setMaxDisplayed] = React.useState(maxDisplayedAlerts);
+  const [alerts, setAlerts] = React.useState<React.ReactElement<AlertProps>[]>([]);
+  const [notifications, setNotifications] = React.useState<NotificationProps[]>([]);
 
   React.useEffect(() => {
 
@@ -89,100 +151,44 @@ const AppLayout: React.FunctionComponent<IAppLayout> = ({ children }) => {
     };
   }, []);
 
-  /* const [sidebarOpen, setSidebarOpen] = React.useState(true); */
-  const [selectedLanguage, setSelectedLanguage] = React.useState('en');
-
-  const onChangeLanguage = (_event: React.FormEvent<HTMLSelectElement>, language: string) => {
-    setSelectedLanguage(language);
-    i18n.changeLanguage(language);
-  };
-
-  //i18n
-  const { t, i18n } = useTranslation();
-  React.useEffect(() => {
-    i18n.changeLanguage(selectedLanguage);
-  }, [selectedLanguage]);
-
-
-
-  const location = useLocation();
-
-
-  const renderNavItem = (route: IAppRoute, index: number) => (
-    <NavItem key={`${route.label}-${index}`} id={`${route.label}-${index}`} isActive={route.path.split('/')[1] === location.pathname.split('/')[1]} className='navitem-flex'>
-      <NavLink exact={route.exact} to={route.path} className={route.path !== '#' ? '' : 'disabled-link'}>
-        {t(route.label as string)}
-      </NavLink>
-    </NavItem>
-  );
-
-  const renderNavGroup = (group: IAppRouteGroup, groupIndex: number) => (
-    <NavExpandable
-      key={`${group.label}-${groupIndex}`}
-      id={`${group.label}-${groupIndex}`}
-      title={group.label}
-      isActive={group.routes.some((route) => route.path === location.pathname)}
-      isExpanded={group.isExpanded}
-    >
-      {group.routes.map((route, idx) => route.label && renderNavItem(route, idx))}
-    </NavExpandable>
-  );
-
-  const Navigation = (
-    <Nav id="nav-first-simple" theme="dark">
-      <NavList id="nav-list-first-simple">
-        {routes.map(
-          (route, idx) => {
-            if ('path' in route) {
-              // This route is an IAppRoute because it has a 'path' property
-              return route.label && renderNavItem(route, idx);
-            } else if ('routes' in route) {
-              // This route is an IAppRouteGroup because it has a 'routes' property
-              return route.label && renderNavGroup(route, idx);
-            }
-            return null;
-          }
-        )}
-      </NavList>
-    </Nav>
-  );
-
-  const Sidebar = (
-    <PageSidebar theme="dark" >
-      <PageSidebarBody isFilled>
-        {Navigation}
-      </PageSidebarBody>
-    </PageSidebar>
-  );
-
-  // Notifications
-  const maxDisplayedAlerts = 3;
-  const minAlerts = 0;
-  const maxAlerts = 100;
-  const alertTimeout = 8000;
-
-  const [isDrawerExpanded, setDrawerExpanded] = React.useState(false);
-  const [openDropdownKey, setOpenDropdownKey] = React.useState<React.Key | null>(null);
-  const [overflowMessage, setOverflowMessage] = React.useState<string>('');
-  const [maxDisplayed, setMaxDisplayed] = React.useState(maxDisplayedAlerts);
-  const [alerts, setAlerts] = React.useState<React.ReactElement<AlertProps>[]>([]);
-  const [notifications, setNotifications] = React.useState<NotificationProps[]>([]);
-
   React.useEffect(() => {
     setOverflowMessage(buildOverflowMessage());
   }, [maxDisplayed, notifications, alerts]);
 
   const addNewNotification = (variant: NotificationProps['variant'], inputTitle, description) => {
+    const key = getUniqueId();
+    const timestamp = getTimeCreated();
+
+    // Extract message from description if possible
+    let errorDescription: string = '';
+    try {
+      const errorPrefix = 'OpenAI API error: Error code: ';
+      if (typeof description === 'string' && description.startsWith(errorPrefix)) {
+        const jsonPart = description.substring(description.indexOf('{'));
+        const jsonString = jsonPart // JSON cleaning
+          .replace(/'/g, '"')
+          .replace(/None/g, 'null')
+          .replace(/True/g, 'true')
+          .replace(/False/g, 'false');
+        const errorObj = JSON.parse(jsonString);
+        if (errorObj && errorObj.message) {
+          errorDescription = `${errorObj.message}`;
+        }
+      }
+    } catch (e) {
+      console.error("Could not parse error description:", e);
+    }
+
     const variantFormatted = variant.charAt(0).toUpperCase() + variant.slice(1);
     let title = '';
     if (inputTitle !== '') {
-      title = variantFormatted + ' - ' + inputTitle;
+      title = errorDescription
+        ? variantFormatted + ' - ' + inputTitle + ': ' + errorDescription
+        : variantFormatted + ' - ' + inputTitle;
     } else {
       title = variantFormatted;
     }
     const srTitle = variantFormatted + ' alert';
-    const key = getUniqueId();
-    const timestamp = getTimeCreated();
 
     setNotifications((prevNotifications) => [
       { title, srTitle, variant, key, timestamp, description, isNotificationRead: false },
@@ -278,7 +284,7 @@ const AppLayout: React.FunctionComponent<IAppLayout> = ({ children }) => {
     return '';
   };
 
-  const getUniqueId = () => new Date().getTime();
+  const getUniqueId = () => uuidv4();
 
   const getTimeCreated = () => {
     const dateCreated = new Date();
@@ -365,9 +371,8 @@ const AppLayout: React.FunctionComponent<IAppLayout> = ({ children }) => {
               variant="plain"
               onClick={() => onDropdownToggle('dropdown-toggle-id-0')}
               aria-label="Notification drawer actions"
-            >
-              <EllipsisVIcon aria-hidden="true" />
-            </MenuToggle>
+              icon={<EllipsisVIcon />}
+            />
           )}
         >
           <DropdownList>{notificationDrawerActions}</DropdownList>
@@ -411,12 +416,7 @@ const AppLayout: React.FunctionComponent<IAppLayout> = ({ children }) => {
           </NotificationDrawerList>
         )}
         {notifications.length === 0 && (
-          <EmptyState variant={EmptyStateVariant.full}>
-            <EmptyStateHeader
-              headingLevel="h2"
-              titleText="No notifications found"
-              icon={<EmptyStateIcon icon={SearchIcon} />}
-            />
+          <EmptyState headingLevel="h2" titleText="No notifications found" icon={SearchIcon} variant={EmptyStateVariant.full}>
             <EmptyStateBody>There are currently no notifications.</EmptyStateBody>
           </EmptyState>
         )}
@@ -424,49 +424,169 @@ const AppLayout: React.FunctionComponent<IAppLayout> = ({ children }) => {
     </NotificationDrawer>
   );
 
-  const headerToolbar = (
-    <Toolbar id="toolbar" isFullHeight isStatic>
-      <ToolbarContent>
-        <ToolbarGroup
-          variant="icon-button-group"
-          align={{ default: 'alignRight' }}
-          spacer={{ default: 'spacerMd', md: 'spacerMd' }}
-        >
 
-          {notificationBadge}
-          <ToolbarItem>
-            <Popover
-              aria-label="Help"
-              position="right"
-              headerContent={t('app_header.help.header')}
-              bodyContent={t('app_header.help.body')}
-              footerContent={t('app_header.help.footer')}
-            >
-              <Button aria-label="Help" variant={ButtonVariant.plain} icon={<QuestionCircleIcon />} />
-            </Popover>
-          </ToolbarItem>
-        </ToolbarGroup>
-      </ToolbarContent>
-    </Toolbar>
+  // Navigation
+  const location = useLocation();
+
+  const renderNavItem = (route: IAppRoute, index: number) => (
+    <NavItem key={`${route.label}-${index}`} id={`${route.label}-${index}`} isActive={route.path.split('/')[1] === location.pathname.split('/')[1]} className='navitem-flex'>
+      <NavLink to={route.path} className={route.path !== '#' ? '' : 'disabled-link'}>
+        {t(route.label as string)}
+      </NavLink>
+    </NavItem>
   );
+
+  const renderNavGroup = (group: IAppRouteGroup, groupIndex: number) => (
+    <NavExpandable
+      key={`${group.label}-${groupIndex}`}
+      id={`${group.label}-${groupIndex}`}
+      title={group.label}
+      isActive={group.routes.some((route) => route.path === location.pathname)}
+      isExpanded={group.isExpanded}
+    >
+      {group.routes.map((route, idx) => route.label && renderNavItem(route, idx))}
+    </NavExpandable>
+  );
+
+  const Navigation = (
+    <Nav id="nav-first-simple" >
+      <NavList id="nav-list-first-simple">
+        {routes.map(
+          (route, idx) => {
+            if ('path' in route) {
+              // This route is an IAppRoute because it has a 'path' property
+              return route.label && renderNavItem(route, idx);
+            } else if ('routes' in route) {
+              // This route is an IAppRouteGroup because it has a 'routes' property
+              return route.label && renderNavGroup(route, idx);
+            }
+            return null;
+          }
+        )}
+      </NavList>
+    </Nav>
+  );
+
+  const Sidebar = (
+    <PageSidebar  >
+      <PageSidebarBody isFilled>
+        {Navigation}
+      </PageSidebarBody>
+    </PageSidebar>
+  );
+
+
+  // Header
+  const HeaderTools = ({
+    isDarkTheme,
+    setIsDarkTheme
+  }) => {
+
+    const toggleDarkTheme = (_evt, selected) => {
+      const darkThemeToggleClicked = !selected === isDarkTheme;
+      const htmlElement = document.querySelector('html');
+      if (htmlElement) {
+        htmlElement.classList.toggle('pf-v6-theme-dark', darkThemeToggleClicked);
+      }
+      setIsDarkTheme(darkThemeToggleClicked);
+    };
+
+    const [isLanguageDropdownOpen, setLanguageDropdownOpen] = React.useState(false);
+
+    return (
+      <Toolbar isFullHeight>
+        <ToolbarContent>
+          <ToolbarGroup align={{ default: 'alignEnd' }}>
+            <ToolbarItem>
+              <ToggleGroup aria-label="Dark theme toggle group">
+                <ToggleGroupItem
+                  aria-label="light theme toggle"
+                  icon={<SunIcon />}
+                  isSelected={!isDarkTheme}
+                  onChange={toggleDarkTheme}
+                />
+                <ToggleGroupItem
+                  aria-label="dark theme toggle"
+                  icon={<MoonIcon />}
+                  isSelected={isDarkTheme}
+                  onChange={toggleDarkTheme}
+                />
+              </ToggleGroup>
+            </ToolbarItem>
+            <ToolbarItem>
+              <Dropdown
+                onSelect={() => setLanguageDropdownOpen(!isLanguageDropdownOpen)}
+                onOpenChange={(isOpen) => setLanguageDropdownOpen(isOpen)}
+                isOpen={isLanguageDropdownOpen}
+                toggle={(toggleRef) => (
+                  <MenuToggle
+                    ref={toggleRef}
+                    onClick={() => setLanguageDropdownOpen(!isLanguageDropdownOpen)}
+                    isExpanded={isLanguageDropdownOpen}
+                  >
+                    {supportedLngs[selectedLanguage] || 'en'}
+                  </MenuToggle>
+                )}
+                popperProps={{ position: 'right' }}
+              >
+                <DropdownGroup key="Language" label="Language">
+                  <DropdownList>
+                    {Object.entries(supportedLngs).map(([lngCode, lngName], index) => (
+                      <DropdownItem key={index} value={lngCode} label={lngName} onClick={() => onChangeLanguage(null as any, lngCode)}>
+                        {lngName}
+                      </DropdownItem>
+                    ))}
+                  </DropdownList>
+                </DropdownGroup>
+              </Dropdown>
+            </ToolbarItem>
+            {notificationBadge}
+            <ToolbarItem>
+              <Popover
+                aria-label="Help"
+                position="right"
+                headerContent={t('app_header.help.header')}
+                bodyContent={t('app_header.help.body')}
+                footerContent={t('app_header.help.footer')}
+              >
+                <Button aria-label="Help" variant={ButtonVariant.plain} icon={<QuestionCircleIcon />} />
+              </Popover>
+            </ToolbarItem>
+            <ToolbarItem>
+              <Flex direction={{ default: 'column' }} alignItems={{ default: 'alignItemsCenter' }} justifyContent={{ default: 'justifyContentCenter' }} className='pf-v5-global--spacer--md'>
+                <Content component={ContentVariants.p}>
+                  {userName}
+                </Content>
+              </Flex>
+            </ToolbarItem>
+            <ToolbarItem>
+              <Avatar src={imgAvatar} alt="" isBordered className='avatar' />
+            </ToolbarItem>
+          </ToolbarGroup>
+        </ToolbarContent>
+      </Toolbar>
+    );
+  };
 
   const Header = (
     <Masthead role="banner" aria-label="page masthead">
-      <MastheadToggle>
+      <MastheadMain>
+        <MastheadToggle>
           <PageToggleButton id="page-nav-toggle" variant="plain" aria-label="Dashboard navigation">
             <BarsIcon />
           </PageToggleButton>
         </MastheadToggle>
-      <MastheadMain>
-        <MastheadBrand>
-          <Brand src={logo} alt="Patternfly Logo" heights={{ default: '36px' }} />
-          <TextContent>
-            <Text component={TextVariants.h2} className='title-text'>Tools &amp; Extensions Companion</Text>
-          </TextContent>
+        <MastheadBrand data-codemods>
+          <MastheadLogo data-codemods style={{ width: 'auto' }}>
+            <Flex direction={{ default: 'row' }} alignItems={{ default: 'alignItemsCenter' }} flexWrap={{ default: 'nowrap' }}>
+              <Brand src={!isDarkTheme ? logoStd : logoReverse} alt="ODH Logo" heights={{ default: '36px' }} />
+              <Content component={ContentVariants.h3} style={{ marginLeft: '1rem' }} className='title-text'>Tools &amp; Extensions Companion</Content>
+            </Flex>
+          </MastheadLogo>
         </MastheadBrand>
       </MastheadMain>
       <MastheadContent>
-        {headerToolbar}
+        <HeaderTools isDarkTheme={isDarkTheme} setIsDarkTheme={setIsDarkTheme} />
       </MastheadContent>
     </Masthead>
   );
@@ -520,7 +640,7 @@ const AppLayout: React.FunctionComponent<IAppLayout> = ({ children }) => {
   return (
     <Page
       mainContainerId={pageId}
-      header={Header}
+      masthead={Header}
       sidebar={Sidebar}
       skipToContent={PageSkipToContent}
       notificationDrawer={notificationDrawer}
@@ -542,12 +662,10 @@ const AppLayout: React.FunctionComponent<IAppLayout> = ({ children }) => {
             Accept
           </Button>
         ]}>
-        <TextContent>
-          <Text component={TextVariants.p}>
+          <Content component={ContentVariants.p}>
             This application is provided "as is" under a MIT licence, without any warranty of any kind.<br />
             Please refer to the <a href='https://github.com/opendatahub-io-contrib/odh-tec/blob/main/LICENSE' target='_blank'>license file</a> for more details
-          </Text>
-        </TextContent>
+          </Content>
       </Modal>
     </Page>
   );
