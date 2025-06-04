@@ -8,10 +8,12 @@ import {
 } from '@aws-sdk/client-s3';
 
 import { getS3Config } from '../../../utils/config';
+import { logAccess } from '../../../utils/logAccess';
 
 export default async (fastify: FastifyInstance): Promise<void> => {
   // Retrieve all accessible buckets
   fastify.get('/', async (req: FastifyRequest, reply: FastifyReply) => {
+    logAccess(req);
     const { s3Client, defaultBucket } = getS3Config();
     const command = new ListBucketsCommand({});
 
@@ -58,6 +60,7 @@ export default async (fastify: FastifyInstance): Promise<void> => {
 
   // Create a new bucket
   fastify.post('/', async (req: FastifyRequest, reply: FastifyReply) => {
+    logAccess(req);
     const { s3Client } = getS3Config();
     const { bucketName } = req.body as any;
     const createBucketCommand = new CreateBucketCommand({
@@ -87,6 +90,7 @@ export default async (fastify: FastifyInstance): Promise<void> => {
 
   // Delete a bucket
   fastify.delete('/:bucketName', async (req: FastifyRequest, reply: FastifyReply) => {
+    logAccess(req);
     const { s3Client } = getS3Config();
     const { bucketName } = req.params as any;
 

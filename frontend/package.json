@@ -1,6 +1,6 @@
 {
   "name": "odh-tec-frontend",
-  "version": "2.0.3",
+  "version": "2.0.7",
   "description": "Frontend for the Open Data Hub Tools & Extensions Companion.",
   "repository": {
     "type": "git",

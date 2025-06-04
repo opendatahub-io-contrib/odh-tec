@@ -18,10 +18,12 @@ import {
 import { HttpProxyAgent } from 'http-proxy-agent';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import { NodeHttpHandler } from '@aws-sdk/node-http-handler';
+import { logAccess } from '../../../utils/logAccess';
 
 export default async (fastify: FastifyInstance): Promise<void> => {
   // Retrieve S3 settings
   fastify.get('/s3', async (req: FastifyRequest, reply: FastifyReply) => {
+    logAccess(req);
     const { accessKeyId, secretAccessKey, region, endpoint, defaultBucket } = getS3Config();
     const settings = {
       accessKeyId: accessKeyId,
@@ -35,6 +37,7 @@ export default async (fastify: FastifyInstance): Promise<void> => {
 
   // Update S3 settings
   fastify.put('/s3', async (req: FastifyRequest, reply: FastifyReply) => {
+    logAccess(req);
     const { accessKeyId, secretAccessKey, region, endpoint, defaultBucket } = req.body as any;
     try {
       updateS3Config(accessKeyId, secretAccessKey, region, endpoint, defaultBucket);
@@ -63,6 +66,7 @@ export default async (fastify: FastifyInstance): Promise<void> => {
 
   // Test S3 connection
   fastify.post('/test-s3', async (req: FastifyRequest, reply: FastifyReply) => {
+    logAccess(req);
     const { accessKeyId, secretAccessKey, region, endpoint } = req.body as any;
     try {
       const { httpProxy, httpsProxy } = getProxyConfig();
@@ -126,6 +130,7 @@ export default async (fastify: FastifyInstance): Promise<void> => {
 
   // Retrieve Hugging Face settings
   fastify.get('/huggingface', async (req: FastifyRequest, reply: FastifyReply) => {
+    logAccess(req);
     const hfToken = getHFConfig();
     const settings = {
       hfToken: hfToken,
@@ -135,6 +140,7 @@ export default async (fastify: FastifyInstance): Promise<void> => {
 
   // Update Hugging Face settings
   fastify.put('/huggingface', async (req: FastifyRequest, reply: FastifyReply) => {
+    logAccess(req);
     const { hfToken } = req.body as any;
     try {
       updateHFConfig(hfToken);
@@ -147,6 +153,7 @@ export default async (fastify: FastifyInstance): Promise<void> => {
 
   // Test Hugging Face connection
   fastify.post('/test-huggingface', async (req: FastifyRequest, reply: FastifyReply) => {
+    logAccess(req);
     const { hfToken } = req.body as any;
     try {
       const { httpsProxy } = getProxyConfig();
@@ -179,12 +186,14 @@ export default async (fastify: FastifyInstance): Promise<void> => {
 
   // Retrieve max concurrent transfers
   fastify.get('/max-concurrent-transfers', async (req: FastifyRequest, reply: FastifyReply) => {
+    logAccess(req);
     const maxConcurrentTransfers = getMaxConcurrentTransfers();
     reply.send({ maxConcurrentTransfers });
   });
 
   // Update max concurrent transfers
   fastify.put('/max-concurrent-transfers', async (req: FastifyRequest, reply: FastifyReply) => {
+    logAccess(req);
     const { maxConcurrentTransfers } = req.body as any;
     try {
       updateMaxConcurrentTransfers(maxConcurrentTransfers);
@@ -197,6 +206,7 @@ export default async (fastify: FastifyInstance): Promise<void> => {
 
   // Retrieve proxy settings
   fastify.get('/proxy', async (req: FastifyRequest, reply: FastifyReply) => {
+    logAccess(req);
     const { httpProxy, httpsProxy } = getProxyConfig();
     const settings = {
       httpProxy: httpProxy,
@@ -207,6 +217,7 @@ export default async (fastify: FastifyInstance): Promise<void> => {
 
   // Update proxy settings
   fastify.put('/proxy', async (req: FastifyRequest, reply: FastifyReply) => {
+    logAccess(req);
     const { httpProxy, httpsProxy } = req.body as any;
     try {
       updateProxyConfig(httpProxy, httpsProxy);
@@ -225,6 +236,7 @@ export default async (fastify: FastifyInstance): Promise<void> => {
 
   // Test proxy connection
   fastify.post('/test-proxy', async (req: FastifyRequest, reply: FastifyReply) => {
+    logAccess(req);
     const { httpProxy, httpsProxy, testUrl } = req.body as any;
     console.log('Testing proxy connection with:', {
       httpProxy,

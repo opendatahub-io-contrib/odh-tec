@@ -18,6 +18,7 @@ import {
   getProxyConfig,
   getS3Config,
 } from '../../../utils/config';
+import { logAccess } from '../../../utils/logAccess';
 import pLimit from 'p-limit';
 
 interface UploadProgress {
@@ -56,6 +57,7 @@ const abortUploadController = createRef(null);
 export default async (fastify: FastifyInstance): Promise<void> => {
   // Get all first-level objects in a bucket (delimiter is /)
   fastify.get('/:bucketName', async (req: FastifyRequest, reply: FastifyReply) => {
+    logAccess(req);
     const { s3Client } = getS3Config();
     const { bucketName } = req.params as any;
     const command = new ListObjectsV2Command({
@@ -82,6 +84,7 @@ export default async (fastify: FastifyInstance): Promise<void> => {
 
   // Get all first-level objects in a bucket under a specific prefix
   fastify.get('/:bucketName/:prefix', async (req: FastifyRequest, reply: FastifyReply) => {
+    logAccess(req);
     const { s3Client } = getS3Config();
     const { bucketName, prefix } = req.params as any;
     let decoded_prefix = '';
@@ -113,6 +116,7 @@ export default async (fastify: FastifyInstance): Promise<void> => {
 
   // Get an object to view it in the client
   fastify.get('/view/:bucketName/:encodedKey', async (req: FastifyRequest, reply: FastifyReply) => {
+    logAccess(req);
     const { s3Client } = getS3Config();
     const { bucketName, encodedKey } = req.params as any;
     const key = atob(encodedKey);
@@ -146,6 +150,7 @@ export default async (fastify: FastifyInstance): Promise<void> => {
   fastify.get(
     '/download/:bucketName/:encodedKey',
     async (req: FastifyRequest, reply: FastifyReply) => {
+      logAccess(req);
       const { s3Client } = getS3Config();
       const { bucketName, encodedKey } = req.params as any;
       const key = atob(encodedKey);
@@ -194,6 +199,7 @@ export default async (fastify: FastifyInstance): Promise<void> => {
 
   // Delete an object or objects with given prefix (folder) from the bucket
   fastify.delete('/:bucketName/:encodedKey', async (req: FastifyRequest, reply: FastifyReply) => {
+    logAccess(req);
     const { s3Client } = getS3Config();
     const { bucketName, encodedKey } = req.params as any;
     const objectName = atob(encodedKey); // This can also be the prefix
@@ -300,6 +306,7 @@ export default async (fastify: FastifyInstance): Promise<void> => {
   fastify.post(
     '/upload/:bucketName/:encodedKey',
     async (req: FastifyRequest, reply: FastifyReply) => {
+      logAccess(req);
       const { bucketName, encodedKey } = req.params as any;
       const { s3Client } = getS3Config();
       const key = atob(encodedKey);
@@ -478,6 +485,7 @@ export default async (fastify: FastifyInstance): Promise<void> => {
   fastify.get(
     '/hf-import/:bucketName/:encodedPrefix/:encodedModelName',
     async (req: FastifyRequest, reply: FastifyReply) => {
+      logAccess(req);
       const { bucketName, encodedPrefix, encodedModelName } = req.params as any;
       let prefix = atob(encodedPrefix);
       prefix = prefix === 'there_is_no_prefix' ? '' : prefix;
