@@ -1,7 +1,6 @@
 import { NotFound } from '@app/components/NotFound/NotFound';
-import { useDocumentTitle } from '@app/utils/useDocumentTitle';
 import * as React from 'react';
-import { Redirect, Route, RouteComponentProps, Switch, useLocation } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import Buckets from './components/Buckets/Buckets';
 import ObjectBrowser from './components/ObjectBrowser/ObjectBrowser';
 import SettingsManagement from './components/Settings/Settings';
@@ -9,12 +8,10 @@ import VramEstimator from './components/VramEstimator/VramEstimator';
 
 
 let routeFocusTimer: number;
+
 export interface IAppRoute {
   label?: string; // Excluding the label will exclude the route from the nav sidebar in AppLayout
-  /* eslint-disable @typescript-eslint/no-explicit-any */
-  component: React.ComponentType<RouteComponentProps<any>> | React.ComponentType<any>;
-  /* eslint-enable @typescript-eslint/no-explicit-any */
-  exact?: boolean;
+  element: JSX.Element;
   path: string;
   title: string;
   routes?: undefined;
@@ -37,15 +34,13 @@ const routes: AppRouteConfig[] = [
     isExpanded: true,
     routes: [
       {
-        component: ObjectBrowser,
-        exact: true,
+        element: <ObjectBrowser />,
         label: 'Object Browser',
         path: '/objects/:bucketName/:prefix?',
         title: 'Object Browser',
       },
       {
-        component: Buckets,
-        exact: true,
+        element: <Buckets />,
         label: 'Bucket Management',
         path: '/buckets',
         title: 'Bucket Management',
@@ -57,8 +52,7 @@ const routes: AppRouteConfig[] = [
     isExpanded: true,
     routes: [
       {
-        component: VramEstimator,
-        exact: true,
+        element: <VramEstimator />,
         label: 'VRAM Estimator',
         path: '/gpu/vram-estimator',
         title: 'VRAM Estimator',
@@ -66,20 +60,18 @@ const routes: AppRouteConfig[] = [
     ],
   },
   {
-    component: () => <Redirect to="/objects/:bucketName/:prefix?" />,
-    exact: true,
+    element: <Navigate to="/objects/:bucketName/:prefix?" />,
     path: '/',
     title: 'Redirect',
   },
   {
-    component: SettingsManagement,
-    exact: true,
+    element: <SettingsManagement />,
     label: 'Settings',
     path: '/settings',
     title: 'Settings',
   },
   {
-    component: () => <Redirect to="/objects/:bucketName/:prefix?" />,
+    element: <Navigate to="/objects/:bucketName/:prefix?" />,
     path: '*',
     title: 'Redirect',
   },
@@ -105,34 +97,18 @@ const useA11yRouteChange = () => {
   }, [pathname]);
 };
 
-const RouteWithTitleUpdates = ({ component: Component, title, ...rest }: IAppRoute) => {
-  useA11yRouteChange();
-  useDocumentTitle(title);
-
-  function routeWithTitle(routeProps: RouteComponentProps) {
-    return <Component {...rest} {...routeProps} />;
-  }
-
-  return <Route render={routeWithTitle} {...rest} />;
-};
-
-const PageNotFound = ({ title }: { title: string }) => {
-  useDocumentTitle(title);
-  return <Route component={NotFound} />;
-};
-
 const flattenedRoutes: IAppRoute[] = routes.reduce(
   (flattened, route) => [...flattened, ...(route.routes ? route.routes : [route])],
   [] as IAppRoute[]
 );
 
 const AppRoutes = (): React.ReactElement => (
-  <Switch>
-    {flattenedRoutes.map(({ path, exact, component, title }, idx) => (
-      <RouteWithTitleUpdates path={path} exact={exact} component={component} key={idx} title={title} />
+  <Routes>
+    {flattenedRoutes.map((route, idx) => (
+      <Route path={route.path} element={route.element} key={idx} />
     ))}
-    <PageNotFound title="404 Page Not Found" />
-  </Switch>
+    <Route element={<NotFound/>} />
+  </Routes>
 );
 
 export { AppRoutes, routes };

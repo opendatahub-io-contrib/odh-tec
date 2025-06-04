@@ -3,9 +3,10 @@ import config from '@app/config';
 import axios from 'axios';
 import { S3Object, S3Objects, S3Prefix, S3Prefixes, ExtendedFile, BucketsList, Bucket, Owner } from './objectBrowserTypes';
 import Emitter from '../../utils/emitter';
+import { NavigateFunction } from 'react-router';
 
 // Fetches the buckets from the backend and updates the state
-export const loadBuckets = (bucketName: string, history, setBucketsList) => {
+export const loadBuckets = (bucketName: string, navigate: NavigateFunction, setBucketsList) => {
     axios.get(`${config.backend_api_url}/buckets`)
         .then(response => {
             if (response.status === 200) {
@@ -15,11 +16,11 @@ export const loadBuckets = (bucketName: string, history, setBucketsList) => {
                     new Owner(owner.DisplayName, owner.ID)
                 );
                 setBucketsList(newBucketsState);
-                if (bucketName === ":bucketName") {
+                if (bucketName === ':bucketName') {
                     if (defaultBucket !== '')
-                        history.push(`/objects/${defaultBucket}`);
+                        navigate(`/objects/${defaultBucket}`);
                     else {
-                        history.push(`/objects/${buckets[0].Name}`);
+                        navigate(`/objects/${buckets[0].Name}`);
                     }
                 }
             } else {
@@ -28,6 +29,7 @@ export const loadBuckets = (bucketName: string, history, setBucketsList) => {
         })
         .catch(error => {
             console.error(error);
+            Emitter.emit('notification', { variant: 'warning', title: error.response?.data?.error || 'Error Fetching Buckets', description: error.response?.data?.message || 'Failed to fetch buckets from the backend.' });
         });
 }
 
@@ -68,6 +70,7 @@ export const refreshObjects = (bucketName: string, prefix: string, setDecodedPre
             setS3Objects(null);
             setS3Prefixes(null);
             console.error('Error fetching objects', error);
+            Emitter.emit('notification', { variant: 'warning', title: error.response?.data?.error || 'Error Fetching Objects', description: error.response?.data?.message || 'Failed to fetch objects from the backend.' });
         });
 }
 
@@ -91,43 +94,43 @@ export const uploadSingleFile = async (file: ExtendedFile, decodedPrefix: string
         })
         .catch(error => {
             console.error('Error uploading file', error);
-            Emitter.emit('notification', { variant: 'warning', title: 'File upload failed', description: String(error) });
+            Emitter.emit('notification', { variant: 'warning', title: error.response?.data?.error || 'File Upload Failed', description: error.response?.data?.message || String(error) });
             resetUploadPanel();
         });
 }
 
 // Deletes a file from the backend
-export const deleteFile = (bucketName: string, decodedPrefix: string, selectedFile: string, history, setFileToDelete, setIsDeleteFileModalOpen) => {
+export const deleteFile = (bucketName: string, decodedPrefix: string, selectedFile: string, navigate: NavigateFunction, setFileToDelete, setIsDeleteFileModalOpen) => {
     axios.delete(`${config.backend_api_url}/objects/${bucketName}/${btoa(selectedFile)}`)
         .then(response => {
             Emitter.emit('notification', { variant: 'success', title: 'File deleted', description: 'File "' + selectedFile.split('/').pop() + '" has been successfully deleted.' });
-            history.push(`/objects/${bucketName}/${btoa(decodedPrefix)}`);
+            navigate(`/objects/${bucketName}/${btoa(decodedPrefix)}`);
             setFileToDelete('');
             setIsDeleteFileModalOpen(false);
         })
         .catch(error => {
             console.error('Error deleting file', error);
-            Emitter.emit('notification', { variant: 'warning', title: 'File deletion failed', description: String(error) });
+            Emitter.emit('notification', { variant: 'warning', title: error.response?.data?.error || 'File Deletion Failed', description: error.response?.data?.message || String(error) });
         });
 }
 
 // Deletes a folder from the backend
-export const deleteFolder = (bucketName: string, decodedPrefix: string, selectedFolder: string, history, setFolderToDelete, setIsDeleteFolderModalOpen) => {
+export const deleteFolder = (bucketName: string, decodedPrefix: string, selectedFolder: string, navigate: NavigateFunction, setFolderToDelete, setIsDeleteFolderModalOpen) => {
     axios.delete(`${config.backend_api_url}/objects/${bucketName}/${btoa(selectedFolder)}`)
         .then(response => {
             Emitter.emit('notification', { variant: 'success', title: 'Folder deleted', description: 'Folder "' + selectedFolder.slice(0, -1).split('/').pop() + '" has been successfully deleted.' });
-            history.push(`/objects/${bucketName}/${btoa(decodedPrefix)}`);
+            navigate(`/objects/${bucketName}/${btoa(decodedPrefix)}`);
             setFolderToDelete('');
             setIsDeleteFolderModalOpen(false);
         })
         .catch(error => {
             console.error('Error deleting folder', error);
-            Emitter.emit('notification', { variant: 'warning', title: 'Folder deletion failed', description: String(error) });
+            Emitter.emit('notification', { variant: 'warning', title: error.response?.data?.error || 'Folder Deletion Failed', description: error.response?.data?.message || String(error) });
         });
 }
 
 // Creates a new folder in the current path
-export const createFolder = (bucketName: string, decodedPrefix: string, newFolderName: string, history, setNewFolderName, setIsCreateFolderModalOpen) => {
+export const createFolder = (bucketName: string, decodedPrefix: string, newFolderName: string, navigate: NavigateFunction, setNewFolderName, setIsCreateFolderModalOpen) => {
     const formData = new FormData();
     const emptyFile = new File([''], '.s3keep');
     formData.append('file', emptyFile);
@@ -141,10 +144,10 @@ export const createFolder = (bucketName: string, decodedPrefix: string, newFolde
             Emitter.emit('notification', { variant: 'success', title: 'Folder created', description: 'Folder "' + newFolderName + '" has been successfully created.' });
             setNewFolderName('');
             setIsCreateFolderModalOpen(false)
-            history.push(`/objects/${bucketName}/${btoa(decodedPrefix)}`);
+            navigate(`/objects/${bucketName}/${btoa(decodedPrefix)}`);
         })
         .catch(error => {
             console.error('Error creating folder', error);
-            Emitter.emit('notification', { variant: 'warning', title: 'Folder creation failed', description: String(error) });
+            Emitter.emit('notification', { variant: 'warning', title: error.response?.data?.error || 'Folder Creation Failed', description: error.response?.data?.message || String(error) });
         });
 }

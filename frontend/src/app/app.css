@@ -4,10 +4,10 @@ body,
   height: 100%;
 }
 
-.pf-v5-c-content {
-  --pf-v5-c-content--small--Color: red; /* changes all <small> color to red */
-  --pf-v5-c-content--blockquote--BorderLeftColor: purple; /* changes all <blockquote> left border color to purple */
-  --pf-v5-c-content--hr--BackgroundColor: lemonchiffon; /* changes a <hr> color to lemonchiffon */
+.pf-v6-c-content {
+  --pf-v6-c-content--small--Color: red; /* changes all <small> color to red */
+  --pf-v6-c-content--blockquote--BorderLeftColor: purple; /* changes all <blockquote> left border color to purple */
+  --pf-v6-c-content--hr--BackgroundColor: lemonchiffon; /* changes a <hr> color to lemonchiffon */
 }
 
 .img-format { /*Default image formatting*/
@@ -94,6 +94,12 @@ body,
   padding-right: 0px;
 }
 
+.breadcrumb-button:disabled,
+.breadcrumb-button[disabled] {
+  background-color: transparent;
+  color: grey;
+}
+
 .folder-icon {
   padding-left: 0px;
   padding-right: 10px;
@@ -160,4 +166,18 @@ body,
 }
 .vram-calculator-section {
   max-width: 75%;
+}
+
+.object-browser-page-section {
+  position: relative;
+}
+
+.object-browser-page-section::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 20%;
+  width: 60%;
+  height: 1px;
+  background-color: #ccc; /* light gray color */
 }
