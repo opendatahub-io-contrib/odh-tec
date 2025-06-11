@@ -1,6 +1,7 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import fs from 'fs';
-import path from 'path';
+import * as fs from 'fs';
+import * as path from 'path';
+import { logAccess } from '../../../utils/logAccess';
 
 interface OdhTecConfig {
   disclaimer?: {
@@ -10,6 +11,7 @@ interface OdhTecConfig {
 
 export default async (fastify: FastifyInstance): Promise<void> => {
   fastify.get('/', async (req: FastifyRequest, reply: FastifyReply) => {
+    logAccess(req);
     try {
       const configFile = await fs.promises.readFile(
         '/opt/app-root/src/.local/share/odh-tec/config',
@@ -29,6 +31,7 @@ export default async (fastify: FastifyInstance): Promise<void> => {
   });
 
   fastify.put('/', async (req: FastifyRequest, reply: FastifyReply) => {
+    logAccess(req);
     const { status } = req.body as any;
     const configFilePath = '/opt/app-root/src/.local/share/odh-tec/config';
     let odhTecConfig: OdhTecConfig = {};

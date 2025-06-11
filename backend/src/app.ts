@@ -15,6 +15,9 @@ export const initializeApp = async (fastify: FastifyInstance, opts: any): Promis
   if (!fs.existsSync(LOG_DIR)) {
     fastify.log.info(`${LOG_DIR} does not exist. Creating`);
     fs.mkdirSync(LOG_DIR);
+    const accessLogPath = path.join(LOG_DIR, 'access.log');
+    fs.writeFileSync(accessLogPath, '', { flag: 'w' });
+    fastify.log.info(`Created empty access.log file at ${accessLogPath}`);
   }
 
   fastify.register(fastifySensible);
