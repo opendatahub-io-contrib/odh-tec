@@ -33,8 +33,18 @@ export const loadBuckets = (bucketName: string, navigate: NavigateFunction, setB
         });
 }
 
-// Fetches the objects from the backend and updates the state
-export const refreshObjects = (bucketName: string, prefix: string, setDecodedPrefix, setS3Objects, setS3Prefixes) => {
+// Fetches the objects from the backend and updates the state WITH pagination support
+export const refreshObjects = (
+    bucketName: string,
+    prefix: string,
+    setDecodedPrefix,
+    setS3Objects,
+    setS3Prefixes,
+    setNextContinuationToken?: (v: string | null) => void,
+    setIsTruncated?: (v: boolean) => void,
+    continuationToken?: string | null,
+    append: boolean = false
+) => {
     let url = '';
     if (bucketName === ':bucketName') {
         return;
@@ -46,29 +56,57 @@ export const refreshObjects = (bucketName: string, prefix: string, setDecodedPre
         setDecodedPrefix(atob(prefix));
         url = `${config.backend_api_url}/objects/${bucketName}/${prefix}`;
     }
+    if (continuationToken) {
+        url += `?continuationToken=${encodeURIComponent(continuationToken)}`;
+    }
+
     axios.get(url)
         .then((response) => {
-            const { objects, prefixes } = response.data;
-            if (objects !== undefined) {
-                const newS3Objects = new S3Objects(
-                    objects.map((s3Object: any) => new S3Object(s3Object.Key, s3Object.LastModified, s3Object.Size))
-                );
+            const { objects, prefixes, nextContinuationToken, isTruncated } = response.data;
+
+            if (setNextContinuationToken) setNextContinuationToken(nextContinuationToken || null);
+            if (setIsTruncated) setIsTruncated(!!isTruncated);
+
+            const newS3Objects = objects !== undefined ? new S3Objects(
+                objects.map((s3Object: any) => new S3Object(s3Object.Key, s3Object.LastModified, s3Object.Size))
+            ) : null;
+            const newS3Prefixes = prefixes !== undefined ? new S3Prefixes(
+                prefixes.map((s3Prefix: any) => new S3Prefix(s3Prefix.Prefix))
+            ) : null;
+
+            if (append) {
+                if (newS3Objects) {
+                    setS3Objects((prev) => {
+                        if (!prev) return newS3Objects;
+                        const existingKeys = new Set(prev.s3Objects.map(o => o.Key));
+                        const merged = [...prev.s3Objects];
+                        for (const o of newS3Objects.s3Objects) {
+                            if (!existingKeys.has(o.Key)) merged.push(o);
+                        }
+                        return new S3Objects(merged);
+                    });
+                }
+                if (newS3Prefixes) {
+                    setS3Prefixes((prev) => {
+                        if (!prev) return newS3Prefixes;
+                        const existingPref = new Set(prev.s3Prefixes.map(p => p.Prefix));
+                        const merged = [...prev.s3Prefixes];
+                        for (const p of newS3Prefixes.s3Prefixes) {
+                            if (!existingPref.has(p.Prefix)) merged.push(p);
+                        }
+                        return new S3Prefixes(merged);
+                    });
+                }
+            } else {
                 setS3Objects(newS3Objects);
-            } else {
-                setS3Objects(null);
-            }
-            if (prefixes !== undefined) {
-                const newS3Prefixes = new S3Prefixes(
-                    prefixes.map((s3Prefix: any) => new S3Prefix(s3Prefix.Prefix))
-                );
                 setS3Prefixes(newS3Prefixes);
-            } else {
-                setS3Prefixes(null);
             }
         })
         .catch((error) => {
             setS3Objects(null);
             setS3Prefixes(null);
+            if (setNextContinuationToken) setNextContinuationToken(null);
+            if (setIsTruncated) setIsTruncated(false);
             console.error('Error fetching objects', error);
             Emitter.emit('notification', { variant: 'warning', title: error.response?.data?.error || 'Error Fetching Objects', description: error.response?.data?.message || 'Failed to fetch objects from the backend.' });
         });

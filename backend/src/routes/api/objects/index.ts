@@ -55,18 +55,21 @@ const createRef = (initialValue: any) => {
 const abortUploadController = createRef(null);
 
 export default async (fastify: FastifyInstance): Promise<void> => {
-  // Get all first-level objects in a bucket (delimiter is /)
+  // Get all first-level objects in a bucket (delimiter is /) WITH pagination support
   fastify.get('/:bucketName', async (req: FastifyRequest, reply: FastifyReply) => {
     logAccess(req);
     const { s3Client } = getS3Config();
     const { bucketName } = req.params as any;
+    const { continuationToken } = (req.query || {}) as any;
     const command = new ListObjectsV2Command({
       Bucket: bucketName,
       Delimiter: '/',
+      ContinuationToken: continuationToken || undefined,
+      MaxKeys: 1000,
     });
     try {
-      const { Contents, CommonPrefixes } = await s3Client.send(command);
-      reply.send({ objects: Contents, prefixes: CommonPrefixes });
+      const { Contents, CommonPrefixes, NextContinuationToken, IsTruncated } = await s3Client.send(command);
+      reply.send({ objects: Contents, prefixes: CommonPrefixes, nextContinuationToken: NextContinuationToken || null, isTruncated: IsTruncated || false });
     } catch (err: any) {
       if (err instanceof S3ServiceException) {
         reply.code(err.$metadata.httpStatusCode || 500).send({
@@ -82,11 +85,12 @@ export default async (fastify: FastifyInstance): Promise<void> => {
     }
   });
 
-  // Get all first-level objects in a bucket under a specific prefix
+  // Get all first-level objects in a bucket under a specific prefix WITH pagination support
   fastify.get('/:bucketName/:prefix', async (req: FastifyRequest, reply: FastifyReply) => {
     logAccess(req);
     const { s3Client } = getS3Config();
     const { bucketName, prefix } = req.params as any;
+    const { continuationToken } = (req.query || {}) as any;
     let decoded_prefix = '';
     if (prefix !== undefined) {
       decoded_prefix = atob(prefix);
@@ -95,10 +99,12 @@ export default async (fastify: FastifyInstance): Promise<void> => {
       Bucket: bucketName,
       Prefix: decoded_prefix,
       Delimiter: '/',
+      ContinuationToken: continuationToken || undefined,
+      MaxKeys: 1000,
     });
     try {
-      const { Contents, CommonPrefixes } = await s3Client.send(command);
-      reply.send({ objects: Contents, prefixes: CommonPrefixes });
+      const { Contents, CommonPrefixes, NextContinuationToken, IsTruncated } = await s3Client.send(command);
+      reply.send({ objects: Contents, prefixes: CommonPrefixes, nextContinuationToken: NextContinuationToken || null, isTruncated: IsTruncated || false });
     } catch (err: any) {
       if (err instanceof S3ServiceException) {
         reply.code(err.$metadata.httpStatusCode || 500).send({

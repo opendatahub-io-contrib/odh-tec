@@ -106,7 +106,10 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
     // Refresh objects from the bucket when location changes
     React.useEffect(() => {
         if (bucketName) {
-            refreshObjects(bucketName, prefix || '', setDecodedPrefix, setS3Objects, setS3Prefixes);
+            // Reset pagination on prefix change
+            setNextContinuationToken(null);
+            setIsTruncated(false);
+            refreshObjects(bucketName, prefix || '', setDecodedPrefix, setS3Objects, setS3Prefixes, setNextContinuationToken, setIsTruncated);
             setFormSelectBucket(bucketName);
             if (bucketName === ':bucketName') {
                 setTextInputBucket('');
@@ -149,6 +152,10 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
     const [decodedPrefix, setDecodedPrefix] = React.useState(''); // The decoded prefix (aka full "folder" path)
     const [s3Objects, setS3Objects] = React.useState<S3Objects | null>(null); // The list of objects with the selected prefix ("folder")
     const [s3Prefixes, setS3Prefixes] = React.useState<S3Prefixes | null>(null); // The list of prefixes ("subfolders") in the current prefix
+    // Pagination state
+    const [nextContinuationToken, setNextContinuationToken] = React.useState<string | null>(null);
+    const [isTruncated, setIsTruncated] = React.useState<boolean>(false);
+    const [isLoadingMore, setIsLoadingMore] = React.useState<boolean>(false);
 
     const columnNames = {
         key: 'Key',
@@ -205,6 +212,8 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
         setS3Objects(null);
         setS3Prefixes(null);
         setDecodedPrefix(plainTextPrefix);
+        setNextContinuationToken(null);
+        setIsTruncated(false);
         navigate(plainTextPrefix !== '' ? `/objects/${bucketName}/${btoa(plainTextPrefix)}` : `/objects/${bucketName}`);
     }
 
@@ -372,7 +381,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                 const oldFileName = singleFilename;
                 Emitter.emit('notification', { variant: 'success', title: 'File uploaded', description: 'File "' + oldFileName + '" has been successfully uploaded.' });
                 resetSingleFileUploadPanel();
-                navigate(`/objects/${bucketName}/${btoa(decodedPrefix)}`);
+                refreshObjects(bucketName!, prefix!, setDecodedPrefix, setS3Objects, setS3Prefixes, setNextContinuationToken, setIsTruncated);
 
             })
             .catch(error => {
@@ -572,7 +581,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                     }
                     return prevUploadedFiles;
                 });
-                refreshObjects(bucketName!, prefix!, setDecodedPrefix, setS3Objects, setS3Prefixes);
+                refreshObjects(bucketName!, prefix!, setDecodedPrefix, setS3Objects, setS3Prefixes, setNextContinuationToken, setIsTruncated, nextContinuationToken, true);
                 eventSource.close();
             }
         }
@@ -807,6 +816,15 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                 setIsImportModelModalOpen(false);
             });
     }
+
+    const handleLoadMore = () => {
+        if (!isTruncated || !nextContinuationToken) return;
+        setIsLoadingMore(true);
+        refreshObjects(bucketName!, prefix || '', setDecodedPrefix, setS3Objects, setS3Prefixes, setNextContinuationToken, setIsTruncated, nextContinuationToken, true);
+        // Minimal delay to allow UX feedback (optionally could hook into promise resolution)
+        setTimeout(() => setIsLoadingMore(false), 400);
+    };
+
     return (
         <div>
             <PageSection hasBodyWrapper={false}>
@@ -1032,6 +1050,13 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                                     ))}
                                 </Tbody>
                             </Table>
+                            {isTruncated && nextContinuationToken && (
+                                <Flex className='load-more-container' justifyContent={{ default: 'justifyContentCenter' }} style={{ marginTop: '8px', marginBottom: '8px' }}>
+                                    <Button variant="secondary" onClick={handleLoadMore} isDisabled={isLoadingMore} ouiaId='LoadMoreObjects'>
+                                        {isLoadingMore ? 'Loading…' : 'Load more'}
+                                    </Button>
+                                </Flex>
+                            )}
 
                         </Card>
                         <Flex direction={{ default: 'column' }} >
