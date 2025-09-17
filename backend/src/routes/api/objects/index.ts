@@ -3,6 +3,7 @@ import {
   DeleteObjectsCommand,
   GetObjectCommand,
   ListObjectsV2Command,
+  ListObjectsV2CommandOutput,
   S3Client,
   S3ServiceException,
 } from '@aws-sdk/client-s3';
@@ -55,21 +56,328 @@ const createRef = (initialValue: any) => {
 const abortUploadController = createRef(null);
 
 export default async (fastify: FastifyInstance): Promise<void> => {
-  // Get all first-level objects in a bucket (delimiter is /) WITH pagination support
-  fastify.get('/:bucketName', async (req: FastifyRequest, reply: FastifyReply) => {
+  // Server-side listing enhancements configuration
+  const DEFAULT_MAX_KEYS = 500; // friendlier cadence for UI
+  const MAX_ALLOWED_KEYS = 2000; // hard upper bound
+  const MAX_CONTAINS_SCAN_PAGES = 40; // safeguard to avoid runaway scans
+  const MAX_QUERY_LENGTH = 256; // validation upper bound for q
+  const QUERY_PATTERN = /^[\w.\- @()+=/:]*$/; // conservative allowlist (word chars, dot, dash, space & a few safe symbols)
+
+  interface FilterMeta {
+    q?: string;
+    mode?: 'startsWith' | 'contains';
+    partialResult?: boolean; // true when search stopped before exhausting bucket
+    scanPages?: number; // number of S3 pages scanned (contains or broadened)
+    scanStoppedReason?: 'maxKeysReached' | 'bucketExhausted' | 'scanCap';
+    autoBroaden?: boolean; // true when startsWith broadened to contains
+    originalMode?: 'startsWith';
+    matches?: {
+      objects: Record<string, [number, number][]>;
+      prefixes: Record<string, [number, number][]>;
+    };
+  }
+
+  const normalizeMaxKeys = (raw?: any): number => {
+    const n = parseInt(raw, 10);
+    if (isNaN(n)) return DEFAULT_MAX_KEYS;
+    return Math.min(Math.max(1, n), MAX_ALLOWED_KEYS);
+  };
+
+  type ListContext = {
+    bucket: string;
+    prefix?: string; // decoded prefix (may be empty string)
+    delimiter?: string;
+    continuationToken?: string;
+    maxKeys: number;
+  };
+
+  const listPage = async (s3Client: S3Client, ctx: ListContext, token?: string): Promise<ListObjectsV2CommandOutput> => {
+    const command = new ListObjectsV2Command({
+      Bucket: ctx.bucket,
+      Prefix: ctx.prefix || undefined,
+      Delimiter: ctx.delimiter || '/',
+      ContinuationToken: token || ctx.continuationToken || undefined,
+      MaxKeys: ctx.maxKeys,
+    });
+    return s3Client.send(command);
+  };
+
+  interface EnhancedResult {
+    objects: any[] | undefined;
+    prefixes: any[] | undefined;
+    nextContinuationToken: string | null;
+    isTruncated: boolean;
+    filter?: FilterMeta;
+  }
+
+  const buildResponse = (reply: FastifyReply, payload: EnhancedResult) => {
+    reply.send(payload);
+  };
+
+  const applyContainsFilter = (
+    Contents: any[] | undefined,
+    CommonPrefixes: any[] | undefined,
+    qLower: string
+  ) => {
+    const filteredObjects = Contents?.filter(o => {
+      const key: string = o.Key || '';
+      const last = key.split('/').pop() || key;
+      return last.toLowerCase().includes(qLower);
+    });
+    const filteredPrefixes = CommonPrefixes?.filter(p => {
+      const pref: string = p.Prefix || '';
+      const last = pref.endsWith('/') ? pref.slice(0, -1).split('/').pop() : pref.split('/').pop();
+      return (last || '').toLowerCase().includes(qLower);
+    });
+    return { filteredObjects, filteredPrefixes };
+  };
+
+  const computeMatchRanges = (leaf: string, qLower: string): [number, number][] => {
+    const ranges: [number, number][] = [];
+    if (!qLower) return ranges;
+    const leafLower = leaf.toLowerCase();
+    let idx = 0;
+    while (idx <= leafLower.length) {
+      const found = leafLower.indexOf(qLower, idx);
+      if (found === -1) break;
+      ranges.push([found, found + qLower.length]);
+      idx = found + 1; // allow overlaps (unlikely needed, but safe)
+    }
+    return ranges;
+  };
+
+  const addMatchMetadata = (objects: any[] | undefined, prefixes: any[] | undefined, qLower: string): FilterMeta['matches'] => {
+    const objMatches: Record<string, [number, number][]> = {};
+    const prefMatches: Record<string, [number, number][]> = {};
+    if (objects) {
+      for (const o of objects) {
+        const key: string = o.Key || '';
+        const leaf = key.split('/').pop() || key;
+        const ranges = computeMatchRanges(leaf, qLower);
+        if (ranges.length) objMatches[key] = ranges;
+      }
+    }
+    if (prefixes) {
+      for (const p of prefixes) {
+        const pref: string = p.Prefix || '';
+        const leaf = (pref.endsWith('/') ? pref.slice(0, -1) : pref).split('/').pop() || pref;
+        const ranges = computeMatchRanges(leaf, qLower);
+        if (ranges.length) prefMatches[pref] = ranges;
+      }
+    }
+    return { objects: objMatches, prefixes: prefMatches };
+  };
+
+  const runContainsScan = async (
+    s3Client: S3Client,
+    bucketName: string,
+    decoded_prefix: string | undefined,
+    continuationToken: string | undefined,
+    qLower: string,
+    effectiveMaxKeys: number
+  ) => {
+    let nextToken: string | undefined = continuationToken || undefined;
+    let aggregatedObjects: any[] = [];
+    let aggregatedPrefixes: any[] = [];
+    let underlyingTruncated = false;
+    let lastUnderlyingToken: string | undefined = undefined;
+    let pagesScanned = 0;
+
+    while (pagesScanned < MAX_CONTAINS_SCAN_PAGES) {
+      const page = await s3Client.send(new ListObjectsV2Command({
+        Bucket: bucketName,
+        Delimiter: '/',
+        Prefix: decoded_prefix || undefined,
+        ContinuationToken: nextToken,
+        MaxKeys: DEFAULT_MAX_KEYS,
+      }));
+      pagesScanned += 1;
+      const { filteredObjects, filteredPrefixes } = applyContainsFilter(page.Contents, page.CommonPrefixes, qLower);
+      if (filteredObjects) aggregatedObjects.push(...filteredObjects);
+      if (filteredPrefixes) aggregatedPrefixes.push(...filteredPrefixes);
+      underlyingTruncated = !!page.IsTruncated;
+      lastUnderlyingToken = page.NextContinuationToken || undefined;
+
+      if (aggregatedObjects.length >= effectiveMaxKeys) break; // reached collection goal
+      if (!underlyingTruncated || !page.NextContinuationToken) break; // exhausted bucket
+      nextToken = page.NextContinuationToken;
+    }
+
+    if (aggregatedObjects.length > effectiveMaxKeys) {
+      aggregatedObjects = aggregatedObjects.slice(0, effectiveMaxKeys);
+    }
+
+    let scanStoppedReason: 'maxKeysReached' | 'bucketExhausted' | 'scanCap';
+    if (pagesScanned >= MAX_CONTAINS_SCAN_PAGES && underlyingTruncated && aggregatedObjects.length < effectiveMaxKeys) {
+      scanStoppedReason = 'scanCap';
+    } else if (aggregatedObjects.length >= effectiveMaxKeys) {
+      scanStoppedReason = 'maxKeysReached';
+    } else {
+      scanStoppedReason = 'bucketExhausted';
+    }
+
+    const morePossible = (underlyingTruncated && (aggregatedObjects.length >= effectiveMaxKeys || scanStoppedReason === 'scanCap'));
+    const responseToken = morePossible ? (lastUnderlyingToken || null) : null;
+
+    return {
+      aggregatedObjects,
+      aggregatedPrefixes,
+      morePossible,
+      responseToken,
+      pagesScanned,
+      scanStoppedReason,
+    };
+  };
+  const handleListRequest = async (
+    req: FastifyRequest,
+    reply: FastifyReply,
+    bucketName: string,
+    decoded_prefix: string | undefined
+  ) => {
     logAccess(req);
     const { s3Client } = getS3Config();
-    const { bucketName } = req.params as any;
-    const { continuationToken } = (req.query || {}) as any;
-    const command = new ListObjectsV2Command({
-      Bucket: bucketName,
-      Delimiter: '/',
-      ContinuationToken: continuationToken || undefined,
-      MaxKeys: 1000,
-    });
+    const { continuationToken, q, mode, maxKeys, autoBroaden } = (req.query || {}) as any;
+
+    // Enhanced input validation
+    if (bucketName && !/^[a-z0-9][a-z0-9\-]{1,61}[a-z0-9]$/.test(bucketName)) {
+      reply.code(400).send({
+        error: 'InvalidBucketName',
+        message: 'Bucket name must be valid S3 bucket name format.',
+      });
+      return;
+    }
+
+    if (continuationToken && (typeof continuationToken !== 'string' || continuationToken.length > 1024)) {
+      reply.code(400).send({
+        error: 'InvalidContinuationToken',
+        message: 'Continuation token is invalid or too long.',
+      });
+      return;
+    }
+
+    if (q) {
+      if (typeof q !== 'string' || q.length > MAX_QUERY_LENGTH || !QUERY_PATTERN.test(q)) {
+        reply.code(400).send({
+          error: 'InvalidQuery',
+            message: `Query parameter 'q' is invalid. Max length ${MAX_QUERY_LENGTH}, allowed pattern ${QUERY_PATTERN.toString()}.`,
+        });
+        return;
+      }
+    }
+
+    const effectiveMaxKeys = normalizeMaxKeys(maxKeys);
+    const requestedMode: 'startsWith' | 'contains' | undefined = q ? (mode === 'startsWith' ? 'startsWith' : 'contains') : undefined;
+
+    if (!q) {
+      const command = new ListObjectsV2Command({
+        Bucket: bucketName,
+        Delimiter: '/',
+        Prefix: decoded_prefix || undefined,
+        ContinuationToken: continuationToken || undefined,
+        MaxKeys: effectiveMaxKeys,
+      });
+      try {
+        const { Contents, CommonPrefixes, NextContinuationToken, IsTruncated } = await s3Client.send(command);
+        buildResponse(reply, {
+          objects: Contents,
+          prefixes: CommonPrefixes,
+          nextContinuationToken: NextContinuationToken || null,
+          isTruncated: !!IsTruncated,
+        });
+      } catch (err: any) {
+        if (err instanceof S3ServiceException) {
+          reply.code(err.$metadata.httpStatusCode || 500).send({
+            error: err.name || 'S3ServiceException',
+            message: err.message || 'An S3 service exception occurred.',
+          });
+        } else {
+          reply.code(500).send({
+            error: err.name || 'Unknown error',
+            message: err.message || 'An unexpected error occurred.',
+          });
+        }
+      }
+      return;
+    }
+
+    const qLower = (q as string).toLowerCase();
+
+    if (requestedMode === 'startsWith') {
+      try {
+        const command = new ListObjectsV2Command({
+          Bucket: bucketName,
+          Delimiter: '/',
+          Prefix: decoded_prefix || undefined,
+          ContinuationToken: continuationToken || undefined,
+          MaxKeys: effectiveMaxKeys,
+        });
+        const { Contents, CommonPrefixes, NextContinuationToken, IsTruncated } = await s3Client.send(command);
+        const { filteredObjects, filteredPrefixes } = applyContainsFilter(Contents, CommonPrefixes, qLower);
+
+        const shouldBroaden = autoBroaden === 'true' && (!filteredObjects || filteredObjects.length === 0) && (!filteredPrefixes || filteredPrefixes.length === 0);
+        if (shouldBroaden) {
+          const scan = await runContainsScan(s3Client, bucketName, decoded_prefix, continuationToken, qLower, effectiveMaxKeys);
+          const matches = addMatchMetadata(scan.aggregatedObjects, scan.aggregatedPrefixes, qLower);
+          buildResponse(reply, {
+            objects: scan.aggregatedObjects,
+            prefixes: scan.aggregatedPrefixes,
+            nextContinuationToken: scan.responseToken,
+            isTruncated: scan.morePossible,
+            filter: {
+              q,
+              mode: 'contains',
+              originalMode: 'startsWith',
+              autoBroaden: true,
+              partialResult: scan.morePossible,
+              scanPages: scan.pagesScanned,
+              scanStoppedReason: scan.scanStoppedReason,
+              matches,
+            },
+          });
+          return;
+        }
+
+        const matches = addMatchMetadata(filteredObjects, filteredPrefixes, qLower);
+        buildResponse(reply, {
+          objects: filteredObjects,
+          prefixes: filteredPrefixes,
+          nextContinuationToken: NextContinuationToken || null,
+          isTruncated: !!IsTruncated,
+          filter: { q, mode: 'startsWith', partialResult: false, matches },
+        });
+      } catch (err: any) {
+        if (err instanceof S3ServiceException) {
+          reply.code(err.$metadata.httpStatusCode || 500).send({
+            error: err.name || 'S3ServiceException',
+            message: err.message || 'An S3 service exception occurred.',
+          });
+        } else {
+          reply.code(500).send({
+            error: err.name || 'Unknown error',
+            message: err.message || 'An unexpected error occurred.',
+          });
+        }
+      }
+      return;
+    }
+
     try {
-      const { Contents, CommonPrefixes, NextContinuationToken, IsTruncated } = await s3Client.send(command);
-      reply.send({ objects: Contents, prefixes: CommonPrefixes, nextContinuationToken: NextContinuationToken || null, isTruncated: IsTruncated || false });
+      const scan = await runContainsScan(s3Client, bucketName, decoded_prefix, continuationToken, qLower, effectiveMaxKeys);
+      const matches = addMatchMetadata(scan.aggregatedObjects, scan.aggregatedPrefixes, qLower);
+      buildResponse(reply, {
+        objects: scan.aggregatedObjects,
+        prefixes: scan.aggregatedPrefixes,
+        nextContinuationToken: scan.responseToken,
+        isTruncated: scan.morePossible,
+        filter: {
+          q,
+          mode: 'contains',
+          partialResult: scan.morePossible,
+          scanPages: scan.pagesScanned,
+          scanStoppedReason: scan.scanStoppedReason,
+          matches,
+        },
+      });
     } catch (err: any) {
       if (err instanceof S3ServiceException) {
         reply.code(err.$metadata.httpStatusCode || 500).send({
@@ -83,41 +391,20 @@ export default async (fastify: FastifyInstance): Promise<void> => {
         });
       }
     }
+  };
+
+  fastify.get('/:bucketName', async (req: FastifyRequest, reply: FastifyReply) => {
+    const { bucketName } = req.params as any;
+    await handleListRequest(req, reply, bucketName, undefined);
   });
 
-  // Get all first-level objects in a bucket under a specific prefix WITH pagination support
   fastify.get('/:bucketName/:prefix', async (req: FastifyRequest, reply: FastifyReply) => {
-    logAccess(req);
-    const { s3Client } = getS3Config();
     const { bucketName, prefix } = req.params as any;
-    const { continuationToken } = (req.query || {}) as any;
     let decoded_prefix = '';
     if (prefix !== undefined) {
-      decoded_prefix = atob(prefix);
+      try { decoded_prefix = atob(prefix); } catch { decoded_prefix = ''; }
     }
-    const command = new ListObjectsV2Command({
-      Bucket: bucketName,
-      Prefix: decoded_prefix,
-      Delimiter: '/',
-      ContinuationToken: continuationToken || undefined,
-      MaxKeys: 1000,
-    });
-    try {
-      const { Contents, CommonPrefixes, NextContinuationToken, IsTruncated } = await s3Client.send(command);
-      reply.send({ objects: Contents, prefixes: CommonPrefixes, nextContinuationToken: NextContinuationToken || null, isTruncated: IsTruncated || false });
-    } catch (err: any) {
-      if (err instanceof S3ServiceException) {
-        reply.code(err.$metadata.httpStatusCode || 500).send({
-          error: err.name || 'S3ServiceException',
-          message: err.message || 'An S3 service exception occurred.',
-        });
-      } else {
-        reply.code(500).send({
-          error: err.name || 'Unknown error',
-          message: err.message || 'An unexpected error occurred.',
-        });
-      }
-    }
+    await handleListRequest(req, reply, bucketName, decoded_prefix);
   });
 
   // Get an object to view it in the client
@@ -350,7 +637,7 @@ export default async (fastify: FastifyInstance): Promise<void> => {
           abortController: abortUploadController.current as AbortController,
         });
 
-        upload.on('httpUploadProgress', (progress) => {
+        upload.on('httpUploadProgress', (progress: any) => {
           uploadProgresses[encodedKey] = { loaded: progress.loaded || 0, status: 'uploading' };
         });
 
@@ -428,7 +715,7 @@ export default async (fastify: FastifyInstance): Promise<void> => {
         abortController: modelAbortController, // Use the dedicated controller
       });
 
-      upload.on('httpUploadProgress', (progress) => {
+      upload.on('httpUploadProgress', (progress: any) => {
         uploadProgresses[file.rfilename] = {
           loaded: progress.loaded || 0,
           status: 'uploading',
@@ -588,18 +875,18 @@ export default async (fastify: FastifyInstance): Promise<void> => {
         Object.keys(uploadErrors).forEach((key) => delete uploadErrors[key]);
       }
 
-      const allCompleted = Object.values(uploadProgresses).every(
-        (item) => item.status === 'completed',
+      const allCompleted = Object.keys(uploadProgresses).map(k => uploadProgresses[k]).every(
+        (item: UploadProgress) => item.status === 'completed',
       );
-      const noActiveUploads = Object.values(uploadProgresses).every(
-        (item) => item.status === 'completed' || item.status === 'idle', // Assuming 'idle' means error/not started
+      const noActiveUploads = Object.keys(uploadProgresses).map(k => uploadProgresses[k]).every(
+        (item: UploadProgress) => item.status === 'completed' || item.status === 'idle', // Assuming 'idle' means error/not started
       );
 
       // End stream if all are completed OR if there are no active/queued uploads left (implying errors might have occurred)
       if (Object.keys(uploadProgresses).length > 0 && noActiveUploads) {
         // Check if any were not completed to decide if it was a full success
-        const anyNotCompleted = Object.values(uploadProgresses).some(
-          (item) => item.status !== 'completed',
+        const anyNotCompleted = Object.keys(uploadProgresses).map(k => uploadProgresses[k]).some(
+          (item: UploadProgress) => item.status !== 'completed',
         );
         if (anyNotCompleted) {
           console.log('Model import process finished, but some files may have failed.');

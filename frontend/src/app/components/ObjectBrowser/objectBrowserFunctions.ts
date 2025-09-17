@@ -5,6 +5,19 @@ import { S3Object, S3Objects, S3Prefix, S3Prefixes, ExtendedFile, BucketsList, B
 import Emitter from '../../utils/emitter';
 import { NavigateFunction } from 'react-router';
 
+// Abort controller for in-flight object listings (pagination aware)
+let currentObjectsFetchAbort: AbortController | null = null;
+
+// Helper: determine if a string is likely base64 (non-empty & reversible)
+const isBase64 = (value: string): boolean => {
+    if (!value || /[^A-Za-z0-9+/=]/.test(value)) return false;
+    try {
+        return btoa(atob(value)) === value;
+    } catch {
+        return false;
+    }
+};
+
 // Fetches the buckets from the backend and updates the state
 export const loadBuckets = (bucketName: string, navigate: NavigateFunction, setBucketsList) => {
     axios.get(`${config.backend_api_url}/buckets`)
@@ -43,26 +56,63 @@ export const refreshObjects = (
     setNextContinuationToken?: (v: string | null) => void,
     setIsTruncated?: (v: boolean) => void,
     continuationToken?: string | null,
-    append: boolean = false
-) => {
-    let url = '';
+    append: boolean = false,
+    searchOptions?: { q?: string; mode?: 'startsWith' | 'contains' },
+    setFilterMeta?: (meta: any) => void,
+    abortController?: AbortController // Accept external abort controller
+): Promise<void> => {
     if (bucketName === ':bucketName') {
-        return;
-    }
-    if (prefix === undefined || prefix === ':prefix') {
-        setDecodedPrefix('');
-        url = `${config.backend_api_url}/objects/${bucketName}`;
-    } else {
-        setDecodedPrefix(atob(prefix));
-        url = `${config.backend_api_url}/objects/${bucketName}/${prefix}`;
-    }
-    if (continuationToken) {
-        url += `?continuationToken=${encodeURIComponent(continuationToken)}`;
+        return Promise.resolve();
     }
 
-    axios.get(url)
+    // Use provided abort controller or create new one
+    const controller = abortController || new AbortController();
+
+    // Only abort the global controller if no external controller is provided
+    if (!abortController && currentObjectsFetchAbort) {
+        currentObjectsFetchAbort.abort();
+    }
+    if (!abortController) {
+        currentObjectsFetchAbort = controller;
+    }
+
+    let url = '';
+    // Root listing when no prefix provided or placeholder
+    if (!prefix || prefix === ':prefix') {
+        setDecodedPrefix('');
+        url = `${config.backend_api_url}/objects/${bucketName}`;
+    } else if (isBase64(prefix)) {
+        // Prefix provided as encoded (normal flow)
+        try {
+            const decoded = atob(prefix);
+            setDecodedPrefix(decoded);
+            url = `${config.backend_api_url}/objects/${bucketName}/${prefix}`;
+        } catch {
+            // Fallback to root if decoding fails
+            setDecodedPrefix('');
+            url = `${config.backend_api_url}/objects/${bucketName}`;
+        }
+    } else {
+        // Prefix appears already decoded (e.g. older call sites) – encode for request
+        const encoded = btoa(prefix);
+        setDecodedPrefix(prefix);
+        url = `${config.backend_api_url}/objects/${bucketName}/${encoded}`;
+    }
+
+    if (continuationToken) {
+        url += `${url.includes('?') ? '&' : '?'}continuationToken=${encodeURIComponent(continuationToken)}`;
+    }
+    if (searchOptions?.q && searchOptions.q.length >= 3) {
+        url += `${url.includes('?') ? '&' : '?'}q=${encodeURIComponent(searchOptions.q)}`;
+        if (searchOptions.mode) {
+            url += `&mode=${encodeURIComponent(searchOptions.mode)}`;
+        }
+    }
+
+    return axios.get(url, { signal: controller.signal })
         .then((response) => {
-            const { objects, prefixes, nextContinuationToken, isTruncated } = response.data;
+            const { objects, prefixes, nextContinuationToken, isTruncated, filter } = response.data;
+            if (setFilterMeta) setFilterMeta(filter || null);
 
             if (setNextContinuationToken) setNextContinuationToken(nextContinuationToken || null);
             if (setIsTruncated) setIsTruncated(!!isTruncated);
@@ -103,12 +153,22 @@ export const refreshObjects = (
             }
         })
         .catch((error) => {
-            setS3Objects(null);
-            setS3Prefixes(null);
-            if (setNextContinuationToken) setNextContinuationToken(null);
-            if (setIsTruncated) setIsTruncated(false);
-            console.error('Error fetching objects', error);
-            Emitter.emit('notification', { variant: 'warning', title: error.response?.data?.error || 'Error Fetching Objects', description: error.response?.data?.message || 'Failed to fetch objects from the backend.' });
+            // Preserve existing data if append failed; only reset on initial load failures
+            if (!append) {
+                setS3Objects(null);
+                setS3Prefixes(null);
+                if (setNextContinuationToken) setNextContinuationToken(null);
+                if (setIsTruncated) setIsTruncated(false);
+            }
+            if (!axios.isCancel(error)) {
+                console.error('Error fetching objects', error);
+                Emitter.emit('notification', { variant: 'warning', title: error.response?.data?.error || 'Error Fetching Objects', description: error.response?.data?.message || 'Failed to fetch objects from the backend.' });
+            }
+        })
+        .finally(() => {
+            if (currentObjectsFetchAbort === controller) {
+                currentObjectsFetchAbort = null;
+            }
         });
 }
 
@@ -117,17 +177,18 @@ export const uploadSingleFile = async (file: ExtendedFile, decodedPrefix: string
     const formData = new FormData();
     formData.append('file', file);
 
-    const encodedKey = btoa(decodedPrefix + file.path.replace(/^\//, '')); // remove leading slash in case of folder upload
+    const encodedKey = btoa(decodedPrefix + file.path.replace(/^[\\/]/, '')); // normalize leading slash
 
     axios.post(`${config.backend_api_url}/objects/upload/${bucketName}/${encodedKey}`, formData, {
         headers: {
             'Content-Type': 'multipart/form-data'
         },
         onUploadProgress: (progressEvent) => {
-            //setUploadedPercentage(Math.round((progressEvent.loaded / fileSize) * 100));
+            // progress hook intentionally left blank (handled elsewhere)
         }
     })
         .then(response => {
+            // Refresh using decoded prefix (refreshObjects will encode if needed)
             refreshObjects(bucketName, decodedPrefix, setDecodedPrefix, setS3Objects, setS3Prefixes);
         })
         .catch(error => {
