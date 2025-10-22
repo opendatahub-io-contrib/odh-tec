@@ -8,16 +8,11 @@
     "moduleResolution": "node",
     "sourceMap": true,
     "outDir": "dist",
+    "skipLibCheck": true,
     "paths": {
-      "*": [
-        "node_modules/*",
-      ],
+      "*": ["node_modules/*"]
     }
   },
-  "include": [
-    "src/**/*"
-  ],
-  "exclude": [
-    "node_modules"
-  ]
+  "include": ["src/**/*"],
+  "exclude": ["node_modules"]
 }

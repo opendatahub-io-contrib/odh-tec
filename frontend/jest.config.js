@@ -29,4 +29,25 @@ module.exports = {
 
   // The test environment that will be used for testing.
   testEnvironment: "jsdom",
+
+  // The root directories that Jest should scan for tests and modules
+  roots: ['<rootDir>/src'],
+
+  // Test match patterns
+  testMatch: ['**/__tests__/**/*.test.tsx', '**/__tests__/**/*.test.ts'],
+
+  // Setup files to run after test environment is set up
+  setupFilesAfterEnv: ['<rootDir>/src/__tests__/setup.ts'],
+
+  // Collect coverage from these files
+  collectCoverageFrom: [
+    'src/**/*.{ts,tsx}',
+    '!src/**/*.d.ts',
+    '!src/__tests__/**'
+  ],
+
+  // Transform PatternFly modules and ESM-only packages
+  transformIgnorePatterns: [
+    'node_modules/(?!(@patternfly|p-limit|yocto-queue|uuid)/)'
+  ]
 };

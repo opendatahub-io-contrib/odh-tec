@@ -18,17 +18,25 @@ import { Upload as AwsUpload } from '@aws-sdk/lib-storage';
 jest.mock('../../../../utils/config', () => ({
   getS3Config: jest.fn(),
   getHFConfig: jest.fn(),
-  getMaxConcurrentTransfers: jest.fn(),
+  getMaxConcurrentTransfers: jest.fn().mockReturnValue(2), // Default value for transferQueue initialization
+  getProxyConfig: jest.fn().mockReturnValue({ httpProxy: undefined, httpsProxy: undefined }),
+}));
+
+// Mock localStorage utils
+jest.mock('../../../../utils/localStorage', () => ({
+  validatePath: jest.fn(),
 }));
 
 // Mock @aws-sdk/lib-storage AT THE TOP LEVEL of the describe or file
 const mockUploadDone = jest.fn();
 const mockUploadOn = jest.fn();
 jest.mock('@aws-sdk/lib-storage', () => ({
-  Upload: jest.fn().mockImplementation((): Partial<AwsUpload> => ({
-    done: mockUploadDone,
-    on: mockUploadOn,
-  })),
+  Upload: jest.fn().mockImplementation(
+    (): Partial<AwsUpload> => ({
+      done: mockUploadDone,
+      on: mockUploadOn,
+    }),
+  ),
 }));
 // Import Upload after mocking it, to get the mocked version
 import { Upload } from '@aws-sdk/lib-storage';
@@ -160,10 +168,12 @@ describe('Object Routes', () => {
     it('should list objects under a prefix successfully', async () => {
       const prefix = 'folder/subfolder/';
       const encodedPrefix = Buffer.from(prefix).toString('base64');
-      s3Mock.on(ListObjectsV2Command, { Bucket: 'test-bucket', Prefix: prefix, Delimiter: '/' }).resolves({
-        Contents: [{ Key: `${prefix}file3.txt` }],
-        CommonPrefixes: [{ Prefix: `${prefix}anotherfolder/` }],
-      });
+      s3Mock
+        .on(ListObjectsV2Command, { Bucket: 'test-bucket', Prefix: prefix, Delimiter: '/' })
+        .resolves({
+          Contents: [{ Key: `${prefix}file3.txt` }],
+          CommonPrefixes: [{ Prefix: `${prefix}anotherfolder/` }],
+        });
 
       const response = await fastify.inject({
         method: 'GET',
@@ -185,7 +195,9 @@ describe('Object Routes', () => {
         message: 'S3 List Error with Prefix',
         $metadata: { httpStatusCode: 404 },
       });
-      s3Mock.on(ListObjectsV2Command, { Bucket: 'test-bucket', Prefix: prefix, Delimiter: '/' }).rejects(s3Error);
+      s3Mock
+        .on(ListObjectsV2Command, { Bucket: 'test-bucket', Prefix: prefix, Delimiter: '/' })
+        .rejects(s3Error);
 
       const response = await fastify.inject({
         method: 'GET',
@@ -414,10 +426,7 @@ describe('Object Routes', () => {
     it('should delete objects under a prefix successfully', async () => {
       const prefix = 'folderToDelete/';
       const encodedKey = Buffer.from(prefix).toString('base64');
-      const objectsInPrefix = [
-        { Key: `${prefix}file1.txt` },
-        { Key: `${prefix}file2.txt` },
-      ];
+      const objectsInPrefix = [{ Key: `${prefix}file1.txt` }, { Key: `${prefix}file2.txt` }];
 
       s3Mock.on(ListObjectsV2Command, { Bucket: 'test-bucket', Prefix: prefix }).resolves({
         Contents: objectsInPrefix,
@@ -461,7 +470,7 @@ describe('Object Routes', () => {
       expect(payload.message).toBe('Access Denied to delete.');
     });
 
-     it('should handle S3ServiceException on DeleteObjectCommand', async () => {
+    it('should handle S3ServiceException on DeleteObjectCommand', async () => {
       const key = 'fileToDeleteSingleError.txt';
       const encodedKey = Buffer.from(key).toString('base64');
 

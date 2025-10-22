@@ -15,6 +15,7 @@ jest.mock('../../../../utils/config', () => ({
   updateMaxConcurrentTransfers: jest.fn(),
   getProxyConfig: jest.fn(),
   updateProxyConfig: jest.fn(),
+  initializeS3Client: jest.fn(), // Mock S3 client initialization
 }));
 
 // Mock axios
@@ -89,7 +90,7 @@ describe('Settings Routes', () => {
           newSettings.secretAccessKey,
           newSettings.region,
           newSettings.endpoint,
-          newSettings.defaultBucket
+          newSettings.defaultBucket,
         );
       });
 
@@ -143,7 +144,9 @@ describe('Settings Routes', () => {
         expect(response.statusCode).toBe(403);
         const payload = JSON.parse(response.payload);
         expect(payload.error).toBe('InvalidAccessKeyId');
-        expect(payload.message).toBe('The AWS Access Key Id you provided does not exist in our records.');
+        expect(payload.message).toBe(
+          'The AWS Access Key Id you provided does not exist in our records.',
+        );
       });
 
       it('should handle other errors during S3 connection test', async () => {
@@ -221,10 +224,11 @@ describe('Settings Routes', () => {
           message: 'Connection successful',
           accessTokenDisplayName: 'TestTokenName',
         });
-        expect(mockedAxios.get).toHaveBeenCalledWith(
-          'https://huggingface.co/api/whoami-v2?',
-          { headers: { Authorization: 'Bearer valid-token' } }
-        );
+        // Updated to match implementation that passes proxy: false to axios.get
+        expect(mockedAxios.get).toHaveBeenCalledWith('https://huggingface.co/api/whoami-v2?', {
+          headers: { Authorization: 'Bearer valid-token' },
+          proxy: false,
+        });
       });
 
       it('should handle errors during Hugging Face connection test', async () => {
@@ -254,7 +258,7 @@ describe('Settings Routes', () => {
         const payload = JSON.parse(response.payload);
         // The route has specific error handling for axios errors vs others.
         // For a generic error, it might use the 'Error testing Hugging Face connection' message.
-        expect(payload.error).toBe('Hugging Face API error'); 
+        expect(payload.error).toBe('Hugging Face API error');
         expect(payload.message).toBe('Error testing Hugging Face connection');
       });
     });
@@ -326,6 +330,11 @@ describe('Settings Routes', () => {
     // PUT /proxy
     describe('PUT /proxy', () => {
       it('should update proxy settings successfully', async () => {
+        // Mock implementation needed to prevent the route from throwing when updateProxyConfig is called
+        (configUtils.updateProxyConfig as jest.Mock).mockImplementation(() => {
+          // Successfully update proxy config (no-op for test)
+        });
+
         const newProxySettings = {
           httpProxy: 'http://newproxy.example.com:8888',
           httpsProxy: 'https://newsecureproxy.example.com:8889',
@@ -339,7 +348,7 @@ describe('Settings Routes', () => {
         expect(JSON.parse(response.payload)).toEqual({ message: 'Settings updated successfully' });
         expect(configUtils.updateProxyConfig).toHaveBeenCalledWith(
           newProxySettings.httpProxy,
-          newProxySettings.httpsProxy
+          newProxySettings.httpsProxy,
         );
       });
 
@@ -406,7 +415,7 @@ describe('Settings Routes', () => {
         expect(payload.error).toBe('AxiosError'); // from err.name
         expect(payload.message).toBe('Connection failed with status: 404 - Not Found');
       });
-      
+
       it('should handle no response error during proxy test', async () => {
         mockedAxios.get.mockRejectedValueOnce({
           isAxiosError: true,
@@ -439,4 +448,4 @@ describe('Settings Routes', () => {
       });
     });
   });
-}); 
+});

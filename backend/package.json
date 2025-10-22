@@ -34,6 +34,8 @@
     "tsc": "tsc -p .",
     "tsc:prod": "tsc -p tsconfig.prod.json",
     "lint": "eslint ./src/",
+    "lint:fix": "eslint ./src/ --fix",
+    "format": "prettier --write \"**/*.{js,jsx,ts,tsx,json,css,scss,md}\"",
     "watch": "tsc -p . -w"
   },
   "dependencies": {
@@ -77,6 +79,7 @@
     "aws-sdk-client-mock": "^4.1.0",
     "babel-eslint": "^10.1.0",
     "fastify-cli": "^5.7.1",
+    "memfs": "^4.6.0",
     "nodemon": "^3.0.2",
     "pino-pretty": "^9.4.0",
     "prettier": "^2.2.1",

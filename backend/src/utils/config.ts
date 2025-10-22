@@ -15,6 +15,24 @@ let maxConcurrentTransfers = parseInt(process.env.MAX_CONCURRENT_TRANSFERS || '2
 let httpProxy = process.env.HTTP_PROXY || '';
 let httpsProxy = process.env.HTTPS_PROXY || '';
 
+// Parse LOCAL_STORAGE_PATHS from environment
+// Default: single directory at /opt/app-root/src/data
+let localStoragePaths: string[] = process.env.LOCAL_STORAGE_PATHS
+  ? process.env.LOCAL_STORAGE_PATHS.split(',')
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0)
+  : ['/opt/app-root/src/data'];
+
+// Parse MAX_FILE_SIZE_GB from environment
+// Default: 20GB
+let maxFileSizeGB: number = parseInt(process.env.MAX_FILE_SIZE_GB || '20', 10);
+
+// Validate maxFileSizeGB
+if (isNaN(maxFileSizeGB) || maxFileSizeGB <= 0) {
+  console.warn(`Invalid MAX_FILE_SIZE_GB: ${process.env.MAX_FILE_SIZE_GB}, using default: 20`);
+  maxFileSizeGB = 20;
+}
+
 export const initializeS3Client = (): S3Client => {
   const s3ClientOptions: any = {
     region: region,
@@ -114,4 +132,75 @@ export const getMaxConcurrentTransfers = (): number => {
 
 export const updateMaxConcurrentTransfers = (newMaxConcurrentTransfers: number): void => {
   maxConcurrentTransfers = newMaxConcurrentTransfers;
+};
+
+/**
+ * Get configured local storage paths
+ * @returns Array of filesystem paths that can be used for local storage
+ */
+export const getLocalStoragePaths = (): string[] => {
+  return [...localStoragePaths]; // Return copy to prevent mutation
+};
+
+/**
+ * Get maximum file size limit in GB
+ * @returns Maximum file size in gigabytes
+ */
+export const getMaxFileSizeGB = (): number => {
+  return maxFileSizeGB;
+};
+
+/**
+ * Get maximum file size limit in bytes
+ * @returns Maximum file size in bytes
+ */
+export const getMaxFileSizeBytes = (): number => {
+  return maxFileSizeGB * 1024 * 1024 * 1024;
+};
+
+/**
+ * Update local storage paths at runtime (for testing or runtime configuration)
+ * @param newPaths - Array of filesystem paths
+ */
+export const updateLocalStoragePaths = (newPaths: string[]): void => {
+  localStoragePaths = newPaths.filter((p) => p.trim().length > 0);
+};
+
+/**
+ * Update maximum file size limit at runtime
+ * @param newLimitGB - New limit in gigabytes
+ */
+export const updateMaxFileSizeGB = (newLimitGB: number): void => {
+  if (newLimitGB > 0 && !isNaN(newLimitGB)) {
+    maxFileSizeGB = newLimitGB;
+  } else {
+    throw new Error(`Invalid file size limit: ${newLimitGB}`);
+  }
+};
+
+/**
+ * Validate a file size against the configured limit
+ * @param sizeBytes - File size in bytes
+ * @returns true if file size is within limit
+ */
+export const isFileSizeValid = (sizeBytes: number): boolean => {
+  return sizeBytes <= getMaxFileSizeBytes();
+};
+
+/**
+ * Format file size for error messages
+ * @param sizeBytes - File size in bytes
+ * @returns Formatted string (e.g., "25.5 GB")
+ */
+export const formatFileSize = (sizeBytes: number): string => {
+  const gb = sizeBytes / (1024 * 1024 * 1024);
+  if (gb >= 1) {
+    return `${gb.toFixed(2)} GB`;
+  }
+  const mb = sizeBytes / (1024 * 1024);
+  if (mb >= 1) {
+    return `${mb.toFixed(2)} MB`;
+  }
+  const kb = sizeBytes / 1024;
+  return `${kb.toFixed(2)} KB`;
 };

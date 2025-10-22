@@ -12,7 +12,10 @@ import axios, { AxiosRequestConfig } from 'axios';
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { HttpProxyAgent } from 'http-proxy-agent';
 import { HttpsProxyAgent } from 'https-proxy-agent';
-import { Readable } from 'stream';
+import { Readable, Transform, pipeline } from 'stream';
+import { promisify } from 'util';
+import { promises as fs, createWriteStream } from 'fs';
+import path from 'path';
 import {
   getHFConfig,
   getMaxConcurrentTransfers,
@@ -20,7 +23,11 @@ import {
   getS3Config,
 } from '../../../utils/config';
 import { logAccess } from '../../../utils/logAccess';
+import { validatePath } from '../../../utils/localStorage';
+import { transferQueue, TransferFileJob } from '../../../utils/transferQueue';
 import pLimit from 'p-limit';
+
+const pipelineAsync = promisify(pipeline);
 
 interface UploadProgress {
   loaded: number;
@@ -774,7 +781,231 @@ export default async (fastify: FastifyInstance): Promise<void> => {
     }
   };
 
-  // Import model from Hugging Face
+  // Interface for HuggingFace import request
+  interface HuggingFaceImportRequest {
+    destinationType?: 's3' | 'local'; // Optional for backward compatibility, defaults to 's3'
+    localLocationId?: string; // Required if destinationType === 'local'
+    localPath?: string; // Required if destinationType === 'local'
+    bucketName?: string; // Required if destinationType === 's3'
+    modelId: string;
+    hfToken?: string;
+    prefix?: string;
+  }
+
+  // Helper function to download a HuggingFace file to S3 or local storage
+  async function downloadHuggingFaceFile(
+    fileJob: TransferFileJob,
+    destinationType: 's3' | 'local',
+    hfToken: string | undefined,
+    onProgress: (loaded: number) => void,
+  ): Promise<void> {
+    const { sourcePath, destinationPath } = fileJob;
+
+    // Parse destination path
+    // Format: "s3:bucketName/path" or "local:locationId/path"
+    const colonIndex = destinationPath.indexOf(':');
+    if (colonIndex === -1) {
+      throw new Error(`Invalid destination path format: ${destinationPath}`);
+    }
+
+    const destRemainder = destinationPath.substring(colonIndex + 1);
+    const firstSlash = destRemainder.indexOf('/');
+    if (firstSlash === -1) {
+      throw new Error(`Invalid destination path format: ${destinationPath}`);
+    }
+
+    const destLoc = destRemainder.substring(0, firstSlash);
+    const destPath = destRemainder.substring(firstSlash + 1);
+
+    // Fetch from HuggingFace with proxy support
+    const { httpProxy, httpsProxy } = getProxyConfig();
+    const axiosOptions: AxiosRequestConfig = {
+      responseType: 'stream',
+      headers: hfToken ? { Authorization: `Bearer ${hfToken}` } : {},
+    };
+
+    if (sourcePath.startsWith('https://') && httpsProxy) {
+      axiosOptions.httpsAgent = new HttpsProxyAgent(httpsProxy);
+      axiosOptions.proxy = false;
+    } else if (sourcePath.startsWith('http://') && httpProxy) {
+      axiosOptions.httpAgent = new HttpProxyAgent(httpProxy);
+      axiosOptions.proxy = false;
+    }
+
+    const response = await axios.get(sourcePath, axiosOptions);
+    const stream = response.data;
+
+    // Track progress
+    let loaded = 0;
+    const progressTransform = new Transform({
+      transform(chunk, encoding, callback) {
+        loaded += chunk.length;
+        onProgress(loaded);
+        callback(null, chunk);
+      },
+    });
+
+    // Write to destination
+    if (destinationType === 's3') {
+      // Upload to S3
+      const { s3Client } = getS3Config();
+      const upload = new Upload({
+        client: s3Client,
+        params: {
+          Bucket: destLoc,
+          Key: destPath,
+          Body: stream.pipe(progressTransform),
+        },
+      });
+      await upload.done();
+    } else {
+      // Write to local storage
+      const absolutePath = await validatePath(destLoc, destPath);
+
+      // Ensure directory exists
+      await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+
+      // Stream to file
+      await pipelineAsync(stream, progressTransform, createWriteStream(absolutePath));
+    }
+  }
+
+  // New POST route for HuggingFace import with local storage support
+  fastify.post<{ Body: HuggingFaceImportRequest }>(
+    '/huggingface-import',
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      logAccess(req);
+      const body = req.body as HuggingFaceImportRequest;
+      const {
+        destinationType = 's3', // Default to 's3' for backward compatibility
+        localLocationId,
+        localPath,
+        bucketName,
+        modelId,
+        hfToken,
+        prefix,
+      } = body;
+
+      // Validate destination parameters
+      if (destinationType === 's3' && !bucketName) {
+        return reply.code(400).send({
+          error: 'ValidationError',
+          message: 'bucketName is required for S3 destination',
+        });
+      }
+
+      if (destinationType === 'local') {
+        if (!localLocationId || !localPath) {
+          return reply.code(400).send({
+            error: 'ValidationError',
+            message: 'localLocationId and localPath are required for local destination',
+          });
+        }
+
+        // Validate local path
+        try {
+          await validatePath(localLocationId, localPath);
+        } catch (error: any) {
+          return reply.code(400).send({
+            error: 'ValidationError',
+            message: `Invalid local storage path: ${error.message}`,
+          });
+        }
+      }
+
+      // Fetch model info from HuggingFace
+      let modelInfo: any;
+      try {
+        const { httpProxy, httpsProxy } = getProxyConfig();
+        const modelInfoUrl = 'https://huggingface.co/api/models/' + modelId;
+        const axiosOptions: AxiosRequestConfig = {
+          headers: hfToken ? { Authorization: `Bearer ${hfToken}` } : {},
+        };
+
+        if (modelInfoUrl.startsWith('https://') && httpsProxy) {
+          axiosOptions.httpsAgent = new HttpsProxyAgent(httpsProxy);
+          axiosOptions.proxy = false;
+        } else if (modelInfoUrl.startsWith('http://') && httpProxy) {
+          axiosOptions.httpAgent = new HttpProxyAgent(httpProxy);
+          axiosOptions.proxy = false;
+        }
+
+        modelInfo = await axios.get(modelInfoUrl, axiosOptions);
+      } catch (error: any) {
+        return reply.code(error.response?.status || 500).send({
+          error: error.response?.data?.error || 'HuggingFace API error',
+          message: error.response?.data?.error || 'Error fetching model info from HuggingFace',
+        });
+      }
+
+      // Check if model is gated and user is authorized
+      const modelGated = modelInfo.data.gated;
+      if (modelGated !== false && hfToken) {
+        try {
+          const { httpProxy, httpsProxy } = getProxyConfig();
+          const whoAmIUrl = 'https://huggingface.co/api/whoami-v2';
+          const axiosOptions: AxiosRequestConfig = {
+            headers: { Authorization: `Bearer ${hfToken}` },
+          };
+
+          if (whoAmIUrl.startsWith('https://') && httpsProxy) {
+            axiosOptions.httpsAgent = new HttpsProxyAgent(httpsProxy);
+            axiosOptions.proxy = false;
+          } else if (whoAmIUrl.startsWith('http://') && httpProxy) {
+            axiosOptions.httpAgent = new HttpProxyAgent(httpProxy);
+            axiosOptions.proxy = false;
+          }
+
+          await axios.get(whoAmIUrl, axiosOptions);
+        } catch (error) {
+          return reply.code(401).send({
+            error: 'Unauthorized',
+            message:
+              'This model requires a valid HuggingFace token to be downloaded, or you are not authorized.',
+          });
+        }
+      } else if (modelGated !== false && !hfToken) {
+        return reply.code(401).send({
+          error: 'Unauthorized',
+          message: 'This model is gated and requires a HuggingFace token.',
+        });
+      }
+
+      // Get model files
+      const modelFiles: Siblings = modelInfo.data.siblings;
+
+      // Create transfer jobs
+      const files = modelFiles.map((file) => {
+        const fileUrl = `https://huggingface.co/${modelId}/resolve/main/${file.rfilename}`;
+        const destinationPath =
+          destinationType === 's3'
+            ? `s3:${bucketName}/${(prefix || '') + modelId}/${file.rfilename}`
+            : `local:${localLocationId}/${localPath}/${modelId}/${file.rfilename}`;
+
+        return {
+          sourcePath: fileUrl,
+          destinationPath,
+          size: 0, // Will be tracked during transfer
+        };
+      });
+
+      // Queue transfer job
+      const jobId = transferQueue.queueJob('huggingface', files, async (fileJob, onProgress) => {
+        await downloadHuggingFaceFile(fileJob, destinationType, hfToken, onProgress);
+      });
+
+      // Return job ID and SSE URL
+      // Note: SSE endpoint would be /api/transfer/progress/:jobId from Phase 1.5
+      // For now, we return the job ID for tracking
+      return reply.send({
+        message: 'Model import started',
+        jobId,
+        sseUrl: `/api/transfer/progress/${jobId}`,
+      });
+    },
+  );
+
+  // Import model from Hugging Face (existing GET route for backward compatibility)
   fastify.get(
     '/hf-import/:bucketName/:encodedPrefix/:encodedModelName',
     async (req: FastifyRequest, reply: FastifyReply) => {

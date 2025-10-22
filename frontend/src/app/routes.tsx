@@ -6,7 +6,6 @@ import ObjectBrowser from './components/ObjectBrowser/ObjectBrowser';
 import SettingsManagement from './components/Settings/Settings';
 import VramEstimator from './components/VramEstimator/VramEstimator';
 
-
 let routeFocusTimer: number;
 
 export interface IAppRoute {
@@ -26,7 +25,6 @@ export interface IAppRouteGroup {
 }
 
 export type AppRouteConfig = IAppRoute | IAppRouteGroup;
-
 
 const routes: AppRouteConfig[] = [
   {
@@ -77,7 +75,6 @@ const routes: AppRouteConfig[] = [
   },
 ];
 
-
 // a custom hook for sending focus to the primary content container
 // after a view has loaded so that subsequent press of tab key
 // sends focus directly to relevant content
@@ -99,7 +96,7 @@ const useA11yRouteChange = () => {
 
 const flattenedRoutes: IAppRoute[] = routes.reduce(
   (flattened, route) => [...flattened, ...(route.routes ? route.routes : [route])],
-  [] as IAppRoute[]
+  [] as IAppRoute[],
 );
 
 const AppRoutes = (): React.ReactElement => (
@@ -107,7 +104,7 @@ const AppRoutes = (): React.ReactElement => (
     {flattenedRoutes.map((route, idx) => (
       <Route path={route.path} element={route.element} key={idx} />
     ))}
-    <Route element={<NotFound/>} />
+    <Route element={<NotFound />} />
   </Routes>
 );
 

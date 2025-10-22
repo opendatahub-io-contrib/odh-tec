@@ -1,5 +1,11 @@
 import { FastifyInstance } from 'fastify';
-import { S3Client, CreateBucketCommand, ListBucketsCommand, DeleteBucketCommand, HeadBucketCommand } from '@aws-sdk/client-s3';
+import {
+  S3Client,
+  CreateBucketCommand,
+  ListBucketsCommand,
+  DeleteBucketCommand,
+  HeadBucketCommand,
+} from '@aws-sdk/client-s3';
 import { mockClient } from 'aws-sdk-client-mock';
 import bucketsRoutes from '../../../../routes/api/buckets';
 import { getS3Config } from '../../../../utils/config';
@@ -59,7 +65,9 @@ describe('Bucket Routes', () => {
         Buckets: [{ Name: 'bucket1' }, { Name: 'inaccessible-bucket' }, { Name: 'bucket2' }],
       });
       s3Mock.on(HeadBucketCommand, { Bucket: 'bucket1' }).resolves({});
-      s3Mock.on(HeadBucketCommand, { Bucket: 'inaccessible-bucket' }).rejects(new Error('Access Denied'));
+      s3Mock
+        .on(HeadBucketCommand, { Bucket: 'inaccessible-bucket' })
+        .rejects(new Error('Access Denied'));
       s3Mock.on(HeadBucketCommand, { Bucket: 'bucket2' }).resolves({});
 
       const response = await fastify.inject({
@@ -73,16 +81,14 @@ describe('Bucket Routes', () => {
       expect(payload.buckets).not.toContainEqual({ Name: 'inaccessible-bucket' });
     });
 
-
     it('should handle S3ServiceException when listing buckets', async () => {
       const s3Error = new S3ServiceException({
         name: 'S3ServiceException',
         $fault: 'client',
-        message: "S3 Error",
+        message: 'S3 Error',
         $metadata: { httpStatusCode: 403 },
       });
       s3Mock.on(ListBucketsCommand).rejects(s3Error);
-
 
       const response = await fastify.inject({
         method: 'GET',
@@ -133,7 +139,7 @@ describe('Bucket Routes', () => {
       const s3Error = new S3ServiceException({
         name: 'S3ServiceException',
         $fault: 'client',
-        message: "S3 Create Error",
+        message: 'S3 Create Error',
         $metadata: { httpStatusCode: 409 },
       });
       s3Mock.on(CreateBucketCommand).rejects(s3Error);
@@ -150,7 +156,7 @@ describe('Bucket Routes', () => {
       expect(payload.message).toBe('S3 Create Error');
     });
 
-     it('should handle other errors when creating a bucket', async () => {
+    it('should handle other errors when creating a bucket', async () => {
       s3Mock.on(CreateBucketCommand).rejects(new Error('Some other create error'));
 
       const response = await fastify.inject({
@@ -186,7 +192,7 @@ describe('Bucket Routes', () => {
       const s3Error = new S3ServiceException({
         name: 'S3ServiceException',
         $fault: 'client',
-        message: "S3 Delete Error",
+        message: 'S3 Delete Error',
         $metadata: { httpStatusCode: 404 },
       });
       s3Mock.on(DeleteBucketCommand).rejects(s3Error);
@@ -216,4 +222,4 @@ describe('Bucket Routes', () => {
       expect(payload.message).toBe('Some other delete error');
     });
   });
-}); 
+});

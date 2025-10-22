@@ -1,4 +1,4 @@
-export default {
+module.exports = {
   // tells eslint to use the TypeScript parser
   "parser": "@typescript-eslint/parser",
   // tell the TypeScript parser that we want to use JSX syntax
