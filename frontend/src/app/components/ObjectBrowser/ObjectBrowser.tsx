@@ -45,7 +45,6 @@ import * as React from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import Emitter from '../../utils/emitter';
 import DocumentRenderer from '../DocumentRenderer/DocumentRenderer';
-import { createFolder, deleteFolder, deleteFile } from './objectBrowserFunctions';
 import {
   ObjectRow,
   PrefixRow,
@@ -269,7 +268,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
     */
   // Copy the prefix (aka full "folder" path) to the clipboard
   const copyPrefixToClipboard = () => {
-    navigator.clipboard.writeText('/' + decodedPrefix).then(
+    navigator.clipboard.writeText('/' + currentPath).then(
       () => {
         Emitter.emit('notification', {
           variant: 'success',
@@ -413,12 +412,6 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
     }
   }, [paginationOffset]); // Dependencies: only paginationOffset (others are setters)
 
-  // Temporary compatibility layer (will be removed in Phase 4)
-  // Allows old code to reference new variables
-  const bucketName = locationId;
-  const prefix = path;
-  const decodedPrefix = currentPath;
-
   // Load files when location or path changes
   React.useEffect(() => {
     if (!selectedLocation) {
@@ -460,7 +453,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
 
   React.useEffect(() => {
     // On short searches (<3) just local filter; if we were previously server searching, reload unfiltered list.
-    if (!bucketName) return;
+    if (!locationId) return;
     let cancelled = false;
     if (!serverSearchActive) {
       if (filterMeta) {
@@ -529,7 +522,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
 
   // Auto-trigger deep search for client-side searches when no matches found
   React.useEffect(() => {
-    if (!bucketName || deepSearchActive) return;
+    if (!locationId || deepSearchActive) return;
     if (searchObjectText.length === 0) return; // No search active
     if (!isTruncated || !paginationToken) return; // No more pages
 
@@ -564,7 +557,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
     paginationToken,
     serverSearchActive,
     deepSearchActive,
-    bucketName,
+    locationId,
     isLoadingMore,
   ]);
 
@@ -601,7 +594,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
   React.useEffect(() => {
     setSelectedItems(new Set());
     setLastSelected(null);
-  }, [decodedPrefix, bucketName]);
+  }, [currentPath, locationId]);
 
   // Select all visible items
   const handleSelectAll = (isSelecting: boolean) => {
@@ -671,7 +664,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
     if (!confirm(`Delete ${selectedItems.size} items?`)) return;
 
     try {
-      await Promise.all(Array.from(selectedItems).map((path) => storageService.deleteFile(bucketName!, path)));
+      await Promise.all(Array.from(selectedItems).map((path) => storageService.deleteFile(locationId!, path)));
 
       // Refresh file list
       if (selectedLocation && selectedLocation.available) {
@@ -767,7 +760,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
   const handleObjectViewClick = (key: string) => async (event: React.MouseEvent<HTMLButtonElement>) => {
     // Retrieve the object from the backend and open the File Viewer modal
     await axios
-      .get(`${config.backend_api_url}/objects/view/${bucketName}/${btoa(key)}`, { responseType: 'arraybuffer' })
+      .get(`${config.backend_api_url}/objects/view/${locationId}/${btoa(key)}`, { responseType: 'arraybuffer' })
       .then((response) => {
         setFileName(key.split('/').pop() || '');
         const binary = new Uint8Array(response.data);
@@ -783,6 +776,33 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
           description: error.response?.data?.message || 'Failed to retrieve the object content.',
         });
       });
+  };
+
+  // Download file handler - avoids page navigation issues
+  const handleFileDownload = (file: FileEntry) => {
+    if (!selectedLocation || !locationId) {
+      console.error('[Download] No location selected');
+      return;
+    }
+
+    console.log('[Download] Starting:', file.path);
+
+    // Build download URL based on storage type
+    const downloadUrl =
+      selectedLocation.type === 's3'
+        ? `${config.backend_api_url}/objects/download/${locationId}/${btoa(file.path)}`
+        : `${config.backend_api_url}/local/download/${locationId}/${btoa(file.path)}`;
+
+    // Use hidden link to trigger download without page navigation
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = file.name;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    console.log('[Download] Triggered for:', file.name);
   };
 
   /*
@@ -877,10 +897,11 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
   };
 
   const handleUploadFileConfirm = (_event: React.MouseEvent) => {
-    if (!singleFileUploadValue) {
+    if (!singleFileUploadValue || !selectedLocation || !locationId) {
       return;
     }
     const fileSize = singleFileUploadValue.size;
+    const fullPath = currentPath + singleFilename;
 
     // Reset progress trackers
     setUploadPercentages(() => ({
@@ -890,13 +911,12 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
       [singleFilename]: { loaded: 0 },
     }));
 
-    const formData = new FormData();
-    formData.append('file', singleFileUploadValue);
-
-    // Upload to S3 progress feedback
+    // Upload to S3 progress feedback (backend-side progress)
     const eventSource = new EventSource(
-      `${config.backend_api_url}/objects/upload-progress/${btoa(decodedPrefix + singleFilename)}`,
+      `${config.backend_api_url}/objects/upload-progress/${btoa(fullPath)}`,
     );
+    singleFileEventSource.current = eventSource;
+
     eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (data.loaded !== 0 && data.status === 'uploading') {
@@ -905,27 +925,24 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
       if (data.status === 'completed') {
         console.log('Upload to S3 completed');
         eventSource.close();
+        singleFileEventSource.current = null;
         delete uploadToS3Percentages[singleFilename];
       }
     };
 
-    // Upload
-    abortUploadController.current = new AbortController();
-    axios
-      .post(
-        `${config.backend_api_url}/objects/upload/${bucketName}/${btoa(decodedPrefix + singleFilename)}`,
-        formData,
-        {
-          signal: abortUploadController.current.signal,
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
-          onUploadProgress: (progressEvent) => {
-            updateProgress(singleFilename, Math.round((progressEvent.loaded / fileSize) * 100));
-          },
+    eventSource.onerror = () => {
+      eventSource.close();
+      singleFileEventSource.current = null;
+    };
+
+    // Upload using storageService with progress callback
+    storageService
+      .uploadFile(locationId, btoa(fullPath), singleFileUploadValue, {
+        onProgress: (percentCompleted) => {
+          updateProgress(singleFilename, percentCompleted);
         },
-      )
-      .then((response) => {
+      })
+      .then(() => {
         const oldFileName = singleFilename;
         Emitter.emit('notification', {
           variant: 'success',
@@ -933,7 +950,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
           description: 'File "' + oldFileName + '" has been successfully uploaded.',
         });
         resetSingleFileUploadPanel();
-        navigate(`/browse/${bucketName}/${btoa(decodedPrefix)}`);
+        navigate(`/browse/${locationId}/${btoa(currentPath)}`);
       })
       .catch((error) => {
         console.error('Error uploading file', error);
@@ -1076,7 +1093,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
     setUploadPercentages((prevPercentages) => {
       const newPercentages = { ...prevPercentages };
       for (const file of fullDroppedFiles) {
-        newPercentages[decodedPrefix + file.path.replace(/^\//, '')] = { loaded: 0 };
+        newPercentages[currentPath + file.path.replace(/^\//, '')] = { loaded: 0 };
       }
       return newPercentages;
     });
@@ -1084,7 +1101,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
     setUploadToS3Percentages((prevPercentages) => {
       const newPercentages = { ...prevPercentages };
       for (const file of fullDroppedFiles) {
-        newPercentages[decodedPrefix + file.path.replace(/^\//, '')] = { loaded: 0, status: 'queued' };
+        newPercentages[currentPath + file.path.replace(/^\//, '')] = { loaded: 0, status: 'queued' };
       }
       return newPercentages;
     });
@@ -1099,8 +1116,13 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
 
   // Processes a file upload
   const handleFileUpload = async (file: File): Promise<void> => {
+    if (!locationId || !selectedLocation) {
+      console.error('[Upload] No location selected');
+      return;
+    }
+
     const fullFile = file as ExtendedFile;
-    const fullPath = decodedPrefix + fullFile.path.replace(/^\//, '').replace(/^\.\//, ''); // remove leading slash in case of folder upload or ./ in case of files
+    const fullPath = currentPath + fullFile.path.replace(/^\//, '').replace(/^\.\//, ''); // remove leading slash in case of folder upload or ./ in case of files
 
     if (uploadPercentages[fullPath]) {
       // File already in upload progress, skipping
@@ -1109,10 +1131,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
 
     const fileSize = fullFile.size;
 
-    const formData = new FormData();
-    formData.append('file', file);
-
-    // Upload to S3 progress feedback
+    // Upload to S3 progress feedback (backend-side progress)
     const eventSource = new EventSource(`${config.backend_api_url}/objects/upload-progress/${btoa(fullPath)}`);
     multiFileEventSources.current.set(fullPath, eventSource);
 
@@ -1153,13 +1172,11 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
       multiFileEventSources.current.delete(fullPath);
     };
 
-    await axios
-      .post(`${config.backend_api_url}/objects/upload/${bucketName}/${btoa(fullPath)}`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-        onUploadProgress: (progressEvent) => {
-          updateProgress(fullPath, Math.round((progressEvent.loaded / fileSize) * 100));
+    // Upload using storageService with progress callback
+    await storageService
+      .uploadFile(locationId, btoa(fullPath), file, {
+        onProgress: (percentCompleted) => {
+          updateProgress(fullPath, percentCompleted);
         },
       })
       .catch((error) => {
@@ -1221,13 +1238,32 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
     }
   };
 
-  const handleDeleteFileConfirm = () => {
+  const handleDeleteFileConfirm = async () => {
     if (!validateFileToDelete()) {
       console.log('Invalid file to delete');
       return;
     }
-    if (selectedFile) {
-      deleteFile(bucketName!, decodedPrefix, selectedFile, navigate, setFileToDelete, setIsDeleteFileModalOpen);
+    if (!selectedFile) return;
+
+    try {
+      await storageService.deleteFile(locationId!, selectedFile);
+
+      Emitter.emit('notification', {
+        variant: 'success',
+        title: 'File deleted',
+        description: `File "${selectedFile.split('/').pop()}" has been successfully deleted.`,
+      });
+
+      navigate(`/browse/${locationId}/${btoa(currentPath)}`);
+      setFileToDelete('');
+      setIsDeleteFileModalOpen(false);
+    } catch (error: any) {
+      console.error('Error deleting file', error);
+      Emitter.emit('notification', {
+        variant: 'warning',
+        title: error.response?.data?.error || 'File Deletion Failed',
+        description: error.response?.data?.message || String(error),
+      });
     }
   };
 
@@ -1260,12 +1296,31 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
     }
   };
 
-  const handleDeleteFolderConfirm = () => {
+  const handleDeleteFolderConfirm = async () => {
     if (!validateFolderToDelete()) {
       console.log('Invalid folder to delete');
       return;
-    } else {
-      deleteFolder(bucketName!, decodedPrefix, selectedFolder, navigate, setFolderToDelete, setIsDeleteFolderModalOpen);
+    }
+
+    try {
+      await storageService.deleteFile(locationId!, selectedFolder);
+
+      Emitter.emit('notification', {
+        variant: 'success',
+        title: 'Folder deleted',
+        description: `Folder "${selectedFolder.slice(0, -1).split('/').pop()}" has been successfully deleted.`,
+      });
+
+      navigate(`/browse/${locationId}/${btoa(currentPath)}`);
+      setFolderToDelete('');
+      setIsDeleteFolderModalOpen(false);
+    } catch (error: any) {
+      console.error('Error deleting folder', error);
+      Emitter.emit('notification', {
+        variant: 'warning',
+        title: error.response?.data?.error || 'Folder Deletion Failed',
+        description: error.response?.data?.message || String(error),
+      });
     }
   };
 
@@ -1304,12 +1359,31 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
     }
   }, [newFolderName]);
 
-  const handleNewFolderCreate = () => {
+  const handleNewFolderCreate = async () => {
     if (!validateFolderName(newFolderName)) {
       alert('Invalid folder name');
       return;
-    } else {
-      createFolder(bucketName!, decodedPrefix, newFolderName, navigate, setNewFolderName, setIsCreateFolderModalOpen);
+    }
+
+    try {
+      await storageService.createDirectory(locationId!, currentPath + newFolderName);
+
+      Emitter.emit('notification', {
+        variant: 'success',
+        title: 'Folder created',
+        description: `Folder "${newFolderName}" has been successfully created.`,
+      });
+
+      setNewFolderName('');
+      setIsCreateFolderModalOpen(false);
+      navigate(`/browse/${locationId}/${btoa(currentPath)}`);
+    } catch (error: any) {
+      console.error('Error creating folder', error);
+      Emitter.emit('notification', {
+        variant: 'warning',
+        title: error.response?.data?.error || 'Folder Creation Failed',
+        description: error.response?.data?.message || String(error),
+      });
     }
   };
 
@@ -1404,7 +1478,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
       };
 
       if (destType === 's3') {
-        params.bucketName = hfBucketName;
+        params.locationId = hfBucketName;
         params.prefix = hfPrefix;
       } else {
         params.localLocationId = localLocationId;
@@ -1452,8 +1526,8 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
           });
           handleImportModelClose(_event);
           // Refresh if destination is current location
-          if (destType === 's3' && hfBucketName === bucketName) {
-            navigate(`/browse/${bucketName}/${btoa(decodedPrefix)}`);
+          if (destType === 's3' && hfBucketName === locationId) {
+            navigate(`/browse/${locationId}/${btoa(currentPath)}`);
           }
         }
       };
@@ -1626,17 +1700,17 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
         <Flex>
           <FlexItem>
             <Breadcrumb ouiaId="PrefixBreadcrumb">
-              <BreadcrumbItem to={`/browse/${bucketName}`}>
+              <BreadcrumbItem to={`/browse/${locationId}`}>
                 <Button
                   variant="link"
                   className="breadcrumb-button"
                   onClick={handlePathClick('')}
                   aria-label="bucket-name"
                 >
-                  {bucketName}
+                  {selectedLocation?.name || locationId}
                 </Button>
               </BreadcrumbItem>
-              {decodedPrefix
+              {currentPath
                 .slice(0, -1)
                 .split('/')
                 .map((part, index) => (
@@ -1645,13 +1719,13 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                       variant="link"
                       className="breadcrumb-button"
                       onClick={handlePathClick(
-                        decodedPrefix
+                        currentPath
                           .slice(0, -1)
                           .split('/')
                           .slice(0, index + 1)
                           .join('/') + '/',
                       )}
-                      isDisabled={index === decodedPrefix.slice(0, -1).split('/').length - 1}
+                      isDisabled={index === currentPath.slice(0, -1).split('/').length - 1}
                       aria-label="folder-name"
                     >
                       {part}
@@ -1862,11 +1936,9 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                             <ToolbarItem gap={{ default: 'gapLg' }}>
                               <Tooltip content={<div>Download this file.</div>}>
                                 <Button
-                                  component="a"
                                   variant="primary"
                                   className="button-file-control"
-                                  download={file.name}
-                                  href={`${config.backend_api_url}/objects/download/${bucketName}/${btoa(file.path)}`}
+                                  onClick={() => handleFileDownload(file)}
                                 >
                                   <FontAwesomeIcon icon={faDownload} />
                                 </Button>
@@ -2296,14 +2368,14 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                   fileName={
                     file.path +
                     ' - ' +
-                    (uploadToS3Percentages[decodedPrefix + file.path.replace(/^\//, '')]?.status ?? '')
+                    (uploadToS3Percentages[currentPath + file.path.replace(/^\//, '')]?.status ?? '')
                   }
                   onClearClick={() => removeFiles([file.path])}
                   progressHelperText={createHelperText(file)}
                   customFileHandler={() => {}}
-                  progressValue={uploadToS3Percentages[decodedPrefix + file.path.replace(/^\//, '')]?.loaded ?? 0}
+                  progressValue={uploadToS3Percentages[currentPath + file.path.replace(/^\//, '')]?.loaded ?? 0}
                   progressVariant={
-                    uploadToS3Percentages[decodedPrefix + file.path.replace(/^\//, '')]?.status === 'completed'
+                    uploadToS3Percentages[currentPath + file.path.replace(/^\//, '')]?.status === 'completed'
                       ? 'success'
                       : undefined
                   }
@@ -2331,7 +2403,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
           // Clear selection
           setSelectedItems(new Set());
         }}
-        sourceLocationId={bucketName!}
+        sourceLocationId={locationId!}
         sourceType={selectedLocation?.type || 's3'}
         sourcePath={currentPath}
         selectedFiles={Array.from(selectedItems)}

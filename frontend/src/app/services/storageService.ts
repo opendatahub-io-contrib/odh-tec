@@ -182,26 +182,41 @@ class StorageService {
   }
 
   /**
-   * Upload file
+   * Upload file with optional progress tracking
    */
-  async uploadFile(locationId: string, path: string, file: File): Promise<void> {
+  async uploadFile(
+    locationId: string,
+    path: string,
+    file: File,
+    options?: {
+      onProgress?: (percentCompleted: number) => void;
+    },
+  ): Promise<void> {
     const location = await this.getLocation(locationId);
     const formData = new FormData();
     formData.append('file', file);
 
     try {
+      const config: any = {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      };
+
+      // Add progress tracking if callback provided
+      if (options?.onProgress) {
+        config.onUploadProgress = (progressEvent: any) => {
+          const percentCompleted = Math.round(
+            (progressEvent.loaded * 100) / (progressEvent.total || progressEvent.loaded),
+          );
+          options.onProgress!(percentCompleted);
+        };
+      }
+
       if (location.type === 's3') {
-        await axios.post(`${config.backend_api_url}/objects/${locationId}/${path}`, formData, {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
-        });
+        await axios.post(`${config.backend_api_url}/objects/${locationId}/${path}`, formData, config);
       } else {
-        await axios.post(`${config.backend_api_url}/local/files/${locationId}/${path}`, formData, {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
-        });
+        await axios.post(`${config.backend_api_url}/local/files/${locationId}/${path}`, formData, config);
       }
     } catch (error) {
       console.error(`Failed to upload file to ${locationId}/${path}:`, error);
