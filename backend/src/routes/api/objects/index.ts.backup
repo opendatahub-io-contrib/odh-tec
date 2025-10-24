@@ -98,11 +98,13 @@ export default async (fastify: FastifyInstance): Promise<void> => {
   const MAX_ALLOWED_KEYS = 2000; // hard upper bound
 
   // 🔐 SECURITY: DoS Prevention - Reduced from 40 to 5
-  const MAX_CONTAINS_SCAN_PAGES = 5; // CHANGED FROM 40
+  const MAX_CONTAINS_SCAN_PAGES = 5;  // CHANGED FROM 40
 
-  // Future enhancements (not yet implemented):
-  // - const MAX_OBJECTS_TO_EXAMINE = 2500;
-  // - const CONTAINS_SEARCH_TIMEOUT_MS = 10000;
+  // 🔐 SECURITY: Maximum objects to examine across all pages
+  const MAX_OBJECTS_TO_EXAMINE = 2500;
+
+  // 🔐 SECURITY: Request timeout for expensive searches
+  const CONTAINS_SEARCH_TIMEOUT_MS = 10000; // 10 seconds
 
   // 🔐 SECURITY: Rate limiting for expensive operations
   const RATE_LIMIT_CONTAINS_SEARCH = 5; // requests per minute
@@ -114,12 +116,7 @@ export default async (fastify: FastifyInstance): Promise<void> => {
     partialResult?: boolean; // true when search stopped before exhausting bucket
     scanPages?: number; // number of S3 pages scanned (contains or broadened)
     objectsExamined?: number; // total objects examined across all pages
-    scanStoppedReason?:
-      | 'maxKeysReached'
-      | 'bucketExhausted'
-      | 'scanCap'
-      | 'examinedCap'
-      | 'timeout';
+    scanStoppedReason?: 'maxKeysReached' | 'bucketExhausted' | 'scanCap' | 'examinedCap' | 'timeout';
     autoBroaden?: boolean; // true when startsWith broadened to contains
     originalMode?: 'startsWith';
     matches?: {
@@ -128,12 +125,11 @@ export default async (fastify: FastifyInstance): Promise<void> => {
     };
   }
 
-  // Future enhancement: Generator pattern for memory efficiency
-  // interface ScanYieldItem {
-  //   type: 'object' | 'prefix';
-  //   data: any;
-  //   matchRanges?: [number, number][];
-  // }
+  interface ScanYieldItem {
+    type: 'object' | 'prefix';
+    data: any;
+    matchRanges?: [number, number][];
+  }
 
   const normalizeMaxKeys = (raw?: any): number => {
     const n = parseInt(raw, 10);
@@ -153,17 +149,22 @@ export default async (fastify: FastifyInstance): Promise<void> => {
     reply.send(payload);
   };
 
-  // Future enhancement: Helper functions for generator pattern
-  // const extractLeafName = (keyOrPrefix: string): string => {
-  //   if (keyOrPrefix.endsWith('/')) {
-  //     return keyOrPrefix.slice(0, -1).split('/').pop() || keyOrPrefix;
-  //   }
-  //   return keyOrPrefix.split('/').pop() || keyOrPrefix;
-  // };
+  /**
+   * Extract filename from S3 key or prefix
+   */
+  const extractLeafName = (keyOrPrefix: string): string => {
+    if (keyOrPrefix.endsWith('/')) {
+      return keyOrPrefix.slice(0, -1).split('/').pop() || keyOrPrefix;
+    }
+    return keyOrPrefix.split('/').pop() || keyOrPrefix;
+  };
 
-  // const matchesQuery = (name: string, qLower: string): boolean => {
-  //   return name.toLowerCase().includes(qLower);
-  // };
+  /**
+   * Filter objects and prefixes by substring match
+   */
+  const matchesQuery = (name: string, qLower: string): boolean => {
+    return name.toLowerCase().includes(qLower);
+  };
 
   const applyContainsFilter = (
     Contents: any[] | undefined,

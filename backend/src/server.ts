@@ -7,6 +7,8 @@ import { AddressInfo } from 'net';
 import https from 'https';
 import fs from 'fs';
 import cors from '@fastify/cors';
+import helmet from '@fastify/helmet';
+import { getCorsConfig } from './config/cors';
 
 const transport =
   APP_ENV === 'development'
@@ -34,11 +36,26 @@ const app = fastify({
   maxParamLength: 1000,
 });
 
-app.register(cors, {
-  origin: ['*'],
-  methods: ['GET', 'PUT', 'POST', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  exposedHeaders: ['Content-Disposition'],
+// Register CORS with secure configuration
+app.register(cors, getCorsConfig());
+
+// Add security headers via Helmet
+app.register(helmet, {
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"], // PatternFly needs inline styles
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", 'data:', 'https:'],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      frameSrc: ["'none'"],
+    },
+  },
+  crossOriginEmbedderPolicy: false, // Needed for some assets
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
 });
 
 app.register(fastifyMultipart);
@@ -50,6 +67,15 @@ app.listen({ port: PORT, host: IP }, (err) => {
     app.log.error(err);
     process.exit(1); // eslint-disable-line
   }
+
+  // Validate security configuration
+  const corsConfig = getCorsConfig();
+  app.log.info({ allowedOrigins: corsConfig.origin }, 'CORS configuration loaded');
+
+  if (Array.isArray(corsConfig.origin) && corsConfig.origin.includes('*')) {
+    app.log.warn('WARNING: CORS is configured with wildcard (*). This is insecure for production!');
+  }
+
   // Load CA bundle used in our API calls
   // tls-ca-bundle.pem is the default CA bundle used by the system in CentOS/RHEL
   // ca.crt is the default CA bundle provided by the service account for kubernetes

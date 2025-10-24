@@ -1,4 +1,4 @@
-import { FastifyInstance } from 'fastify';
+import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { pipeline } from 'stream/promises';
 import { Transform, Readable } from 'stream';
 import { promises as fs } from 'fs';
@@ -8,6 +8,9 @@ import { Upload } from '@aws-sdk/lib-storage';
 import { getS3Config } from '../../../utils/config';
 import { validatePath } from '../../../utils/localStorage';
 import { transferQueue, TransferFileJob, TransferJob } from '../../../utils/transferQueue';
+import { authenticateUser, authorizeLocation } from '../../../plugins/auth';
+import { auditLog } from '../../../utils/auditLog';
+import { checkRateLimit, getRateLimitResetTime } from '../../../utils/rateLimit';
 
 /**
  * Request body for transfer initiation
@@ -302,11 +305,104 @@ async function executeTransfer(
  * Transfer routes plugin
  */
 export default async (fastify: FastifyInstance): Promise<void> => {
+  // 🔐 SECURITY: Rate limiting for expensive operations
+  const RATE_LIMIT_TRANSFER = 10; // requests per minute
+  const RATE_LIMIT_WINDOW_MS = 60000; // 1 minute
+
+  /**
+   * Authentication hook - authenticates all requests to /api/transfer/*
+   */
+  fastify.addHook('onRequest', async (request: FastifyRequest, reply: FastifyReply) => {
+    await authenticateUser(request, reply);
+  });
+
+  /**
+   * Authorization hook - checks locationId access for transfer routes
+   * Validates both source and destination locationIds
+   */
+  fastify.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
+    if (!request.user) {
+      return;
+    }
+
+    const body = request.body as any;
+
+    // For transfer POST requests, check both source and destination
+    if (request.method === 'POST' && request.url === '/' && body.source && body.destination) {
+      try {
+        // Check source location access
+        if (body.source.type === 'local') {
+          authorizeLocation(request.user, body.source.locationId);
+        }
+        // Check destination location access
+        if (body.destination.type === 'local') {
+          authorizeLocation(request.user, body.destination.locationId);
+        }
+      } catch (error: any) {
+        const resource = `transfer:${body.source.type}:${body.source.locationId} -> ${body.destination.type}:${body.destination.locationId}`;
+        auditLog(request.user, 'transfer', resource, 'denied', error.message);
+        return reply.code(403).send({
+          error: 'Forbidden',
+          message: error.message,
+        });
+      }
+    }
+
+    // For conflict check requests, check destination
+    if (request.method === 'POST' && request.url === '/check-conflicts' && body.destination) {
+      try {
+        if (body.destination.type === 'local') {
+          authorizeLocation(request.user, body.destination.locationId);
+        }
+      } catch (error: any) {
+        const resource = `conflict-check:${body.destination.type}:${body.destination.locationId}`;
+        auditLog(request.user, 'conflict-check', resource, 'denied', error.message);
+        return reply.code(403).send({
+          error: 'Forbidden',
+          message: error.message,
+        });
+      }
+    }
+  });
+
+  /**
+   * Audit logging hook - logs all requests after completion
+   */
+  fastify.addHook('onResponse', async (request: FastifyRequest, reply: FastifyReply) => {
+    if (request.user) {
+      const body = request.body as any;
+      let resource = 'transfer:unknown';
+
+      if (body?.source && body?.destination) {
+        resource = `transfer:${body.source.type}:${body.source.locationId} -> ${body.destination.type}:${body.destination.locationId}`;
+      } else if (body?.destination) {
+        resource = `conflict-check:${body.destination.type}:${body.destination.locationId}`;
+      }
+
+      const status = reply.statusCode >= 200 && reply.statusCode < 300 ? 'success' : 'failure';
+      const action = request.method.toLowerCase();
+      auditLog(request.user, action, resource, status);
+    }
+  });
+
   /**
    * POST /
    * Initiate cross-storage transfer
    */
   fastify.post<{ Body: TransferRequest }>('/', async (request, reply) => {
+    // 🔐 SECURITY: Rate limiting for transfer requests (expensive operation)
+    const clientIp = request.ip || 'unknown';
+    const rateLimitKey = `transfer:${clientIp}`;
+
+    if (checkRateLimit(rateLimitKey, RATE_LIMIT_TRANSFER, RATE_LIMIT_WINDOW_MS)) {
+      const retryAfter = getRateLimitResetTime(rateLimitKey);
+      return reply.code(429).send({
+        error: 'RateLimitExceeded',
+        message: `Too many transfer requests. Maximum ${RATE_LIMIT_TRANSFER} per minute.`,
+        retryAfter,
+      });
+    }
+
     const { source, destination, files, conflictResolution } = request.body;
 
     try {
