@@ -57,7 +57,7 @@ describe('App tests', () => {
     window.dispatchEvent(new Event('resize'));
 
     // Check that nav links are in the document (sidebar may be collapsed)
-    expect(screen.getByRole('link', { name: /object browser/i, hidden: true })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /storage browser/i, hidden: true })).toBeInTheDocument();
   });
 
   it('should hide the sidebar when clicking the nav-toggle button', async () => {
@@ -69,12 +69,12 @@ describe('App tests', () => {
     const button = screen.getByRole('button', { name: /dashboard navigation/i });
 
     // Sidebar starts collapsed, so nav links have tabindex=-1 (need hidden: true)
-    const navLink = screen.getByRole('link', { name: /object browser/i, hidden: true });
+    const navLink = screen.getByRole('link', { name: /storage browser/i, hidden: true });
     expect(navLink).toBeInTheDocument();
 
     await user.click(button);
 
     // After clicking toggle, sidebar should still have the link
-    expect(screen.getByRole('link', { name: /object browser/i, hidden: true })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /storage browser/i, hidden: true })).toBeInTheDocument();
   });
 });

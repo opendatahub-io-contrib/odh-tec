@@ -1,13 +1,21 @@
-import { FastifyInstance } from 'fastify';
+import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { pipeline } from 'stream/promises';
 import { Transform, Readable } from 'stream';
 import { promises as fs } from 'fs';
 import path from 'path';
-import { GetObjectCommand, CopyObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
+import {
+  GetObjectCommand,
+  CopyObjectCommand,
+  HeadObjectCommand,
+  DeleteObjectCommand,
+} from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import { getS3Config } from '../../../utils/config';
 import { validatePath } from '../../../utils/localStorage';
 import { transferQueue, TransferFileJob, TransferJob } from '../../../utils/transferQueue';
+import { authenticateUser, authorizeLocation } from '../../../plugins/auth';
+import { auditLog } from '../../../utils/auditLog';
+import { checkRateLimit, getRateLimitResetTime } from '../../../utils/rateLimit';
 
 /**
  * Request body for transfer initiation
@@ -299,14 +307,131 @@ async function executeTransfer(
 }
 
 /**
+ * Delete a file from S3 or local storage
+ */
+async function deleteFile(type: string, locationId: string, filePath: string): Promise<void> {
+  if (type === 's3') {
+    const { s3Client } = getS3Config();
+    const command = new DeleteObjectCommand({
+      Bucket: locationId,
+      Key: filePath,
+    });
+    await s3Client.send(command);
+  } else if (type === 'local') {
+    try {
+      const absolutePath = await validatePath(locationId, filePath);
+      await fs.unlink(absolutePath);
+    } catch (error: any) {
+      // Ignore if file doesn't exist or already deleted
+      if (error.code !== 'ENOENT') {
+        throw error;
+      }
+    }
+  }
+}
+
+/**
  * Transfer routes plugin
  */
 export default async (fastify: FastifyInstance): Promise<void> => {
+  // 🔐 SECURITY: Rate limiting for expensive operations
+  const RATE_LIMIT_TRANSFER = 10; // requests per minute
+  const RATE_LIMIT_WINDOW_MS = 60000; // 1 minute
+
+  /**
+   * Authentication hook - authenticates all requests to /api/transfer/*
+   */
+  fastify.addHook('onRequest', async (request: FastifyRequest, reply: FastifyReply) => {
+    await authenticateUser(request, reply);
+  });
+
+  /**
+   * Authorization hook - checks locationId access for transfer routes
+   * Validates both source and destination locationIds
+   */
+  fastify.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
+    if (!request.user) {
+      return;
+    }
+
+    const body = request.body as any;
+
+    // For transfer POST requests, check both source and destination
+    if (request.method === 'POST' && request.url === '/' && body.source && body.destination) {
+      try {
+        // Check source location access
+        if (body.source.type === 'local') {
+          authorizeLocation(request.user, body.source.locationId);
+        }
+        // Check destination location access
+        if (body.destination.type === 'local') {
+          authorizeLocation(request.user, body.destination.locationId);
+        }
+      } catch (error: any) {
+        const resource = `transfer:${body.source.type}:${body.source.locationId} -> ${body.destination.type}:${body.destination.locationId}`;
+        auditLog(request.user, 'transfer', resource, 'denied', error.message);
+        return reply.code(403).send({
+          error: 'Forbidden',
+          message: error.message,
+        });
+      }
+    }
+
+    // For conflict check requests, check destination
+    if (request.method === 'POST' && request.url === '/check-conflicts' && body.destination) {
+      try {
+        if (body.destination.type === 'local') {
+          authorizeLocation(request.user, body.destination.locationId);
+        }
+      } catch (error: any) {
+        const resource = `conflict-check:${body.destination.type}:${body.destination.locationId}`;
+        auditLog(request.user, 'conflict-check', resource, 'denied', error.message);
+        return reply.code(403).send({
+          error: 'Forbidden',
+          message: error.message,
+        });
+      }
+    }
+  });
+
+  /**
+   * Audit logging hook - logs all requests after completion
+   */
+  fastify.addHook('onResponse', async (request: FastifyRequest, reply: FastifyReply) => {
+    if (request.user) {
+      const body = request.body as any;
+      let resource = 'transfer:unknown';
+
+      if (body?.source && body?.destination) {
+        resource = `transfer:${body.source.type}:${body.source.locationId} -> ${body.destination.type}:${body.destination.locationId}`;
+      } else if (body?.destination) {
+        resource = `conflict-check:${body.destination.type}:${body.destination.locationId}`;
+      }
+
+      const status = reply.statusCode >= 200 && reply.statusCode < 300 ? 'success' : 'failure';
+      const action = request.method.toLowerCase();
+      auditLog(request.user, action, resource, status);
+    }
+  });
+
   /**
    * POST /
    * Initiate cross-storage transfer
    */
   fastify.post<{ Body: TransferRequest }>('/', async (request, reply) => {
+    // 🔐 SECURITY: Rate limiting for transfer requests (expensive operation)
+    const clientIp = request.ip || 'unknown';
+    const rateLimitKey = `transfer:${clientIp}`;
+
+    if (checkRateLimit(rateLimitKey, RATE_LIMIT_TRANSFER, RATE_LIMIT_WINDOW_MS)) {
+      const retryAfter = getRateLimitResetTime(rateLimitKey);
+      return reply.code(429).send({
+        error: 'RateLimitExceeded',
+        message: `Too many transfer requests. Maximum ${RATE_LIMIT_TRANSFER} per minute.`,
+        retryAfter,
+      });
+    }
+
     const { source, destination, files, conflictResolution } = request.body;
 
     try {
@@ -355,6 +480,13 @@ export default async (fastify: FastifyInstance): Promise<void> => {
   fastify.get<{ Params: { jobId: string } }>('/progress/:jobId', async (request, reply) => {
     const { jobId } = request.params;
 
+    // Set CORS headers for EventSource (required for SSE cross-origin requests)
+    reply.raw.setHeader('Access-Control-Allow-Origin', '*');
+    reply.raw.setHeader(
+      'Access-Control-Allow-Headers',
+      'Origin, X-Requested-With, Content-Type, Accept',
+    );
+
     // Set SSE headers
     reply.raw.setHeader('Content-Type', 'text/event-stream');
     reply.raw.setHeader('Cache-Control', 'no-cache');
@@ -386,6 +518,15 @@ export default async (fastify: FastifyInstance): Promise<void> => {
       })),
     });
 
+    // Send keepalive comments every 15 seconds to prevent proxy timeouts
+    const keepaliveInterval = setInterval(() => {
+      if (!reply.raw.destroyed) {
+        reply.raw.write(': keepalive\n\n');
+      } else {
+        clearInterval(keepaliveInterval);
+      }
+    }, 15000);
+
     // Listen for job updates
     const updateListener = (updatedJob: TransferJob) => {
       if (updatedJob.id === jobId) {
@@ -408,6 +549,7 @@ export default async (fastify: FastifyInstance): Promise<void> => {
           updatedJob.status === 'failed' ||
           updatedJob.status === 'cancelled'
         ) {
+          clearInterval(keepaliveInterval);
           transferQueue.off('job-updated', updateListener);
           reply.raw.end();
         }
@@ -418,8 +560,46 @@ export default async (fastify: FastifyInstance): Promise<void> => {
 
     // Clean up on connection close
     request.raw.on('close', () => {
+      clearInterval(keepaliveInterval);
       transferQueue.off('job-updated', updateListener);
     });
+  });
+
+  /**
+   * GET /:jobId
+   * Get transfer job details
+   */
+  fastify.get<{ Params: { jobId: string } }>('/:jobId', async (request, reply) => {
+    const { jobId } = request.params;
+
+    try {
+      const job = transferQueue.getJob(jobId);
+      if (!job) {
+        return reply.code(404).send({ error: 'Job not found' });
+      }
+
+      return reply.code(200).send({
+        jobId: job.id,
+        type: job.type,
+        status: job.status,
+        progress: job.progress,
+        files: job.files.map((f) => ({
+          sourcePath: f.sourcePath,
+          destinationPath: f.destinationPath,
+          size: f.size,
+          loaded: f.loaded,
+          status: f.status,
+          error: f.error,
+        })),
+        createdAt: job.createdAt,
+        startedAt: job.startedAt,
+        completedAt: job.completedAt,
+        error: job.error,
+      });
+    } catch (error: any) {
+      fastify.log.error(error);
+      return reply.code(500).send({ error: error.message || 'Failed to get job details' });
+    }
   });
 
   /**
@@ -435,6 +615,55 @@ export default async (fastify: FastifyInstance): Promise<void> => {
     } catch (error: any) {
       fastify.log.error(error);
       return reply.code(500).send({ error: error.message || 'Cancel failed' });
+    }
+  });
+
+  /**
+   * POST /:jobId/cleanup
+   * Delete all files from a cancelled job
+   */
+  fastify.post<{ Params: { jobId: string } }>('/:jobId/cleanup', async (request, reply) => {
+    const { jobId } = request.params;
+
+    try {
+      const job = transferQueue.getJob(jobId);
+      if (!job) {
+        return reply.code(404).send({ error: 'Job not found' });
+      }
+
+      if (job.status !== 'cancelled') {
+        return reply.code(400).send({
+          error: 'InvalidStatus',
+          message: 'Job must be cancelled to cleanup files',
+        });
+      }
+
+      // Delete all files from this job (both completed and partial)
+      const errors: string[] = [];
+      for (const file of job.files) {
+        try {
+          const [type, locationId, filePath] = parseTransferPath(file.destinationPath);
+          await deleteFile(type, locationId, filePath);
+        } catch (error: any) {
+          fastify.log.error(`Failed to delete file ${file.destinationPath}:`, error);
+          errors.push(`${file.destinationPath}: ${error.message}`);
+        }
+      }
+
+      if (errors.length > 0) {
+        return reply.code(207).send({
+          message: 'Cleanup completed with errors',
+          errors,
+        });
+      }
+
+      return reply.code(200).send({
+        message: 'All files cleaned up successfully',
+        filesDeleted: job.files.length,
+      });
+    } catch (error: any) {
+      fastify.log.error(error);
+      return reply.code(500).send({ error: error.message || 'Cleanup failed' });
     }
   });
 

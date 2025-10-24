@@ -191,11 +191,49 @@ export async function getStorageLocations(logger?: any): Promise<StorageLocation
       available = stats.isDirectory();
 
       if (!available && logger) {
-        logger.warn(`Path exists but is not a directory: ${dirPath}`);
+        logger.warn(
+          {
+            path: dirPath,
+            isFile: stats.isFile(),
+            isSymlink: stats.isSymbolicLink(),
+          },
+          `Path exists but is not a directory: ${dirPath}`,
+        );
+      } else if (available && logger) {
+        logger.debug(
+          {
+            path: dirPath,
+            locationId: `local-${i}`,
+          },
+          `Local storage directory verified: ${dirPath}`,
+        );
       }
     } catch (error: any) {
       if (logger) {
-        logger.warn(`Local storage path not accessible: ${dirPath} - ${error.message}`);
+        const errorDetails: any = {
+          path: dirPath,
+          locationId: `local-${i}`,
+          errorCode: error.code,
+          errorMessage: error.message,
+        };
+
+        // Provide specific guidance based on error type
+        if (error.code === 'ENOENT') {
+          logger.warn(
+            errorDetails,
+            `Local storage path does not exist: ${dirPath} - Create this directory or update LOCAL_STORAGE_PATHS`,
+          );
+        } else if (error.code === 'EACCES') {
+          logger.warn(
+            errorDetails,
+            `Local storage path permission denied: ${dirPath} - Check directory permissions`,
+          );
+        } else {
+          logger.warn(
+            errorDetails,
+            `Local storage path not accessible: ${dirPath} - ${error.message}`,
+          );
+        }
       }
     }
 

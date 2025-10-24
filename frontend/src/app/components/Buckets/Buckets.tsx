@@ -2,7 +2,7 @@ import config from '@app/config';
 import * as React from 'react';
 import axios from 'axios';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faBucket, faTrash } from '@fortawesome/free-solid-svg-icons';
+import { faBucket, faTrash, faFolder } from '@fortawesome/free-solid-svg-icons';
 import {
   Button,
   Card,
@@ -20,7 +20,7 @@ import {
 } from '@patternfly/react-core';
 import { Modal } from '@patternfly/react-core/deprecated';
 import { Table, Thead, Tr, Th, Tbody, Td, ThProps } from '@patternfly/react-table';
-import { SearchIcon, CloudIcon, FolderIcon } from '@patternfly/react-icons';
+import { SearchIcon, CloudIcon, FolderIcon, SyncIcon } from '@patternfly/react-icons';
 import Emitter from '../../utils/emitter';
 import { useNavigate } from 'react-router-dom';
 import { storageService, StorageLocation } from '../../services/storageService';
@@ -141,8 +141,8 @@ const Buckets: React.FunctionComponent = () => {
             title: 'Bucket created',
             description: 'Bucket ' + newBucketName + ' has been created successfully',
           });
-          // Refresh both locations and bucket details
-          Promise.all([storageService.getLocations(), axios.get(`${config.backend_api_url}/buckets`)])
+          // Refresh both locations and bucket details (force refresh to update cache)
+          Promise.all([storageService.refreshLocations(), axios.get(`${config.backend_api_url}/buckets`)])
             .then(([newLocations, bucketsResponse]) => {
               setLocations(newLocations);
               const { owner, buckets } = bucketsResponse.data;
@@ -215,8 +215,8 @@ const Buckets: React.FunctionComponent = () => {
             title: 'Bucket deleted',
             description: 'Bucket ' + selectedBucket + ' has been deleted successfully',
           });
-          // Refresh both locations and bucket details
-          Promise.all([storageService.getLocations(), axios.get(`${config.backend_api_url}/buckets`)])
+          // Refresh both locations and bucket details (force refresh to update cache)
+          Promise.all([storageService.refreshLocations(), axios.get(`${config.backend_api_url}/buckets`)])
             .then(([newLocations, bucketsResponse]) => {
               setLocations(newLocations);
               const { owner, buckets } = bucketsResponse.data;
@@ -257,6 +257,44 @@ const Buckets: React.FunctionComponent = () => {
   const [searchBucketText, setSearchBucketText] = React.useState('');
   const [locations, setLocations] = React.useState<StorageLocation[]>([]);
   const [bucketsList, setBucketsList] = React.useState<BucketsList | null>(null);
+  const [isRefreshing, setIsRefreshing] = React.useState(false);
+
+  // Manual refresh handler
+  const handleRefreshLocations = async () => {
+    setIsRefreshing(true);
+    try {
+      // Force refresh storage locations from backend
+      const [newLocations, bucketsResponse] = await Promise.all([
+        storageService.refreshLocations(),
+        axios.get(`${config.backend_api_url}/buckets`),
+      ]);
+
+      setLocations(newLocations);
+
+      // Update S3 bucket details
+      const { owner, buckets } = bucketsResponse.data;
+      const newBucketsState = new BucketsList(
+        buckets.map((bucket: any) => new Bucket(bucket.Name, bucket.CreationDate)),
+        new Owner(owner.DisplayName, owner.ID),
+      );
+      setBucketsList(newBucketsState);
+
+      Emitter.emit('notification', {
+        variant: 'success',
+        title: 'Storage refreshed',
+        description: 'Storage locations have been updated successfully.',
+      });
+    } catch (error: any) {
+      console.error('Failed to refresh storage locations:', error);
+      Emitter.emit('notification', {
+        variant: 'warning',
+        title: error.response?.data?.error || 'Refresh Failed',
+        description: error.response?.data?.message || 'Failed to refresh storage locations.',
+      });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const columnNames = {
     name: 'Name',
@@ -345,8 +383,28 @@ const Buckets: React.FunctionComponent = () => {
     // Load unified storage locations
     storageService
       .getLocations()
-      .then(setLocations)
+      .then((locations) => {
+        setLocations(locations);
+
+        // Check if we got any available locations
+        const availableLocations = locations.filter((loc) => loc.available);
+        if (locations.length === 0) {
+          Emitter.emit('notification', {
+            variant: 'warning',
+            title: 'No storage locations available',
+            description:
+              'All storage sources failed to load. Check S3 and local storage configuration. See browser console for details.',
+          });
+        } else if (availableLocations.length === 0) {
+          Emitter.emit('notification', {
+            variant: 'info',
+            title: 'Storage locations unavailable',
+            description: 'Storage locations exist but are not currently accessible.',
+          });
+        }
+      })
       .catch((error) => {
+        // This should not happen with allSettled, but keep as safety net
         console.error('Failed to load storage locations:', error);
         Emitter.emit('notification', {
           variant: 'warning',
@@ -393,6 +451,18 @@ const Buckets: React.FunctionComponent = () => {
             />
           </FlexItem>
           <FlexItem align={{ default: 'alignRight' }}>
+            <Button
+              variant="secondary"
+              onClick={handleRefreshLocations}
+              isLoading={isRefreshing}
+              isDisabled={isRefreshing}
+              icon={<SyncIcon />}
+              aria-label="Refresh storage locations"
+            >
+              Refresh
+            </Button>
+          </FlexItem>
+          <FlexItem>
             <Button variant="primary" onClick={handleCreateBucketModalToggle} ouiaId="ShowCreateProjectModal">
               Create S3 Bucket
             </Button>
@@ -411,7 +481,7 @@ const Buckets: React.FunctionComponent = () => {
                 <Th width={10}>{columnNames.status}</Th>
                 <Th width={10}>{columnNames.creation_date}</Th>
                 <Th width={10}>{columnNames.owner}</Th>
-                <Th width={10}>&nbsp;</Th>
+                <Th width={10} screenReaderText="Actions" />
               </Tr>
             </Thead>
             <Tbody>
@@ -425,7 +495,7 @@ const Buckets: React.FunctionComponent = () => {
                       }}
                       isDisabled={!row.available}
                     >
-                      <FontAwesomeIcon icon={faBucket} />
+                      <FontAwesomeIcon icon={row.type === 's3' ? faBucket : faFolder} />
                       &nbsp;{row.name}
                     </Button>
                   </Td>
@@ -482,7 +552,14 @@ const Buckets: React.FunctionComponent = () => {
         ]}
         ouiaId="CreateBucketModal"
       >
-        <Form>
+        <Form
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (newBucketName.length > 2 && validateBucketName(newBucketName)) {
+              handleNewBucketCreate();
+            }
+          }}
+        >
           <FormGroup label="Bucket name" isRequired fieldId="bucket-name">
             <TextInput
               isRequired
@@ -494,8 +571,11 @@ const Buckets: React.FunctionComponent = () => {
               value={newBucketName}
               onChange={(_event, newBucketName) => setNewBucketName(newBucketName)}
               onKeyDown={(event) => {
-                if (event.key === 'Enter' && newBucketName.length > 2 && validateBucketName(newBucketName)) {
-                  handleNewBucketCreate();
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  if (newBucketName.length > 2 && validateBucketName(newBucketName)) {
+                    handleNewBucketCreate();
+                  }
                 }
               }}
             />
@@ -548,8 +628,11 @@ const Buckets: React.FunctionComponent = () => {
           value={bucketToDelete}
           onChange={(_event, bucketToDelete) => setBucketToDelete(bucketToDelete)}
           onKeyDown={(event) => {
-            if (event.key === 'Enter' && validateBucketToDelete()) {
-              handleDeleteBucketConfirm();
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              if (validateBucketToDelete()) {
+                handleDeleteBucketConfirm();
+              }
             }
           }}
         />

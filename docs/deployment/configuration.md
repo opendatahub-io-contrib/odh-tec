@@ -178,6 +178,66 @@ export const updateS3Config = (
 | `PORT`      | No       | `8888`        | Server port      | `8888`, `3000`                   |
 | `LOG_LEVEL` | No       | `info`        | Logging level    | `debug`, `info`, `warn`, `error` |
 
+#### File Type Validation
+
+| Variable                         | Required | Default                                       | Description                                            | Example                  |
+| -------------------------------- | -------- | --------------------------------------------- | ------------------------------------------------------ | ------------------------ |
+| `ALLOWED_FILE_EXTENSIONS`        | No       | See default list below                        | Override default allowed extensions (comma-separated)  | `.pdf,.docx,.custom`     |
+| `ALLOWED_FILE_EXTENSIONS_APPEND` | No       | -                                             | Append to default allowed extensions (comma-separated) | `.custom,.proprietary`   |
+| `BLOCKED_FILE_EXTENSIONS`        | No       | Executables, scripts, system files (see list) | Override default blocked extensions (comma-separated)  | `.dangerous,.restricted` |
+| `BLOCKED_FILE_EXTENSIONS_APPEND` | No       | -                                             | Append to default blocked extensions (comma-separated) | `.risky`                 |
+
+**Default Allowed Extensions**:
+
+- **Model files**: `.safetensors`, `.bin`, `.pt`, `.pth`, `.onnx`, `.gguf`, `.h5`
+- **Data files**: `.csv`, `.json`, `.jsonl`, `.parquet`, `.arrow`, `.feather`
+- **Text files**: `.txt`, `.md`, `.yaml`, `.yml`
+- **Archives**: `.tar`, `.gz`, `.zip`, `.tgz`
+- **Images**: `.jpg`, `.jpeg`, `.png`, `.gif`, `.bmp`
+- **Audio/Video**: `.wav`, `.mp3`, `.mp4`, `.avi`
+- **Notebooks**: `.ipynb`
+- **Documents**: `.pdf`, `.doc`, `.docx`, `.xls`, `.xlsx`, `.ppt`, `.pptx`, `.odt`, `.ods`, `.odp`, `.rtf`
+- **Markup/Style**: `.xml`, `.html`, `.css`
+- **Backup/Misc**: `.old`, `.bak`, `.backup`, `.tmp`
+- **Log/SQL**: `.log`, `.sql`
+
+**Default Blocked Extensions** (security risk):
+
+- **Executables**: `.exe`, `.dll`, `.so`, `.dylib`, `.com`
+- **Scripts**: `.js`, `.ts`, `.py`, `.rb`, `.pl`, `.php`, `.sh`, `.bat`, `.cmd`
+- **System files**: `.sys`, `.drv`
+
+**Configuration Priority**:
+
+1. If `*_EXTENSIONS` (override) is set → use only those extensions (replaces defaults)
+2. If `*_EXTENSIONS_APPEND` is set → merge with defaults
+3. If both set → override takes precedence
+4. If neither set → use defaults
+
+**Examples**:
+
+```bash
+# Override - only allow specific extensions
+ALLOWED_FILE_EXTENSIONS=".pdf,.docx,.xlsx,.custom"
+
+# Append - add custom extensions to defaults
+ALLOWED_FILE_EXTENSIONS_APPEND=".proprietary,.custom"
+
+# Block additional file types
+BLOCKED_FILE_EXTENSIONS_APPEND=".dangerous,.risky"
+
+# WARNING: Override blocked list (use with caution!)
+BLOCKED_FILE_EXTENSIONS=".dangerous"  # Only .dangerous blocked, .exe now allowed!
+```
+
+**Notes**:
+
+- Extensions can be specified with or without leading dot (`.pdf` or `pdf`)
+- Extensions are case-insensitive (`.PDF` = `.pdf`)
+- Whitespace is trimmed automatically
+- Empty entries are ignored
+- Blocked list always takes precedence over allowed list
+
 ### Environment File Example
 
 **File**: `backend/.env.example`
@@ -248,6 +308,24 @@ PORT=8888
 
 # Logging level (debug | info | warn | error)
 LOG_LEVEL=info
+
+# ===========================================
+# File Type Validation (Optional)
+# ===========================================
+
+# Override default allowed file extensions (comma-separated)
+# When set, ONLY these extensions are allowed (replaces defaults)
+# ALLOWED_FILE_EXTENSIONS=.pdf,.docx,.xlsx,.custom
+
+# Append additional allowed extensions to defaults (comma-separated)
+# ALLOWED_FILE_EXTENSIONS_APPEND=.custom,.proprietary
+
+# Override default blocked file extensions (comma-separated)
+# WARNING: Use with caution - defaults block dangerous executables
+# BLOCKED_FILE_EXTENSIONS=.dangerous,.restricted
+
+# Append additional blocked extensions to defaults (comma-separated)
+# BLOCKED_FILE_EXTENSIONS_APPEND=.risky
 ```
 
 ### Using Environment Files

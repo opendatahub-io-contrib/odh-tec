@@ -8,6 +8,7 @@ import axios from 'axios';
 import * as React from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import Emitter from '../../utils/emitter';
+import { storageService } from '../../services/storageService';
 
 interface SettingsProps { }
 
@@ -97,6 +98,12 @@ const SettingsManagement: React.FunctionComponent<SettingsProps> = () => {
             .then((response) => {
                 Emitter.emit('notification', { variant: 'success', title: '', description: 'Settings saved successfully!' });
                 setS3SettingsChanged(false);
+                // Refresh storage locations to reflect new S3 configuration
+                storageService.refreshLocations()
+                    .catch((error) => {
+                        console.error('Failed to refresh storage locations after S3 config update:', error);
+                        // Don't show error notification - settings were saved successfully
+                    });
             })
             .catch((error) => {
                 console.error(error);

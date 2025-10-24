@@ -428,13 +428,16 @@ const AppLayout: React.FunctionComponent<IAppLayout> = ({ children }) => {
   // Navigation
   const location = useLocation();
 
-  const renderNavItem = (route: IAppRoute, index: number) => (
-    <NavItem key={`${route.label}-${index}`} id={`${route.label}-${index}`} isActive={route.path.split('/')[1] === location.pathname.split('/')[1]} className='navitem-flex'>
-      <NavLink to={route.path} className={route.path !== '#' ? '' : 'disabled-link'}>
-        {t(route.label as string)}
-      </NavLink>
-    </NavItem>
-  );
+  const renderNavItem = (route: IAppRoute, index: number) => {
+    const navTarget = route.navPath ?? route.path;
+    return (
+      <NavItem key={`${route.label}-${index}`} id={`${route.label}-${index}`} isActive={route.path.split('/')[1] === location.pathname.split('/')[1]} className='navitem-flex'>
+        <NavLink to={navTarget} className={navTarget !== '#' ? '' : 'disabled-link'}>
+          {t(route.label as string)}
+        </NavLink>
+      </NavItem>
+    );
+  };
 
   const renderNavGroup = (group: IAppRouteGroup, groupIndex: number) => (
     <NavExpandable

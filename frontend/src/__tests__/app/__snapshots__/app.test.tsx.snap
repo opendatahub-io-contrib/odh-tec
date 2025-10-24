@@ -353,10 +353,10 @@ exports[`App tests should render default App component 1`] = `
               <button
                 aria-expanded="true"
                 class="pf-v6-c-nav__link"
-                id="S3 Tools-0"
+                id="Storage Tools-0"
                 tabindex="-1"
               >
-                S3 Tools
+                Storage Tools
                 <span
                   class="pf-v6-c-nav__toggle"
                 >
@@ -380,7 +380,7 @@ exports[`App tests should render default App component 1`] = `
                 </span>
               </button>
               <section
-                aria-labelledby="S3 Tools-0"
+                aria-labelledby="Storage Tools-0"
                 class="pf-v6-c-nav__subnav"
               >
                 <ul
@@ -397,10 +397,10 @@ exports[`App tests should render default App component 1`] = `
                       aria-current="page"
                       class="pf-v6-c-nav__link pf-m-current active"
                       data-discover="true"
-                      href="/objects/:bucketName/:prefix"
+                      href="/browse"
                       tabindex="-1"
                     >
-                      Object Browser
+                      Storage Browser
                     </a>
                   </li>
                   <li
@@ -415,7 +415,7 @@ exports[`App tests should render default App component 1`] = `
                       href="/buckets"
                       tabindex="-1"
                     >
-                      Bucket Management
+                      Storage Management
                     </a>
                   </li>
                 </ul>
@@ -532,11 +532,11 @@ exports[`App tests should render default App component 1`] = `
                       data-ouia-safe="true"
                       data-pf-content="true"
                     >
-                      S3 Objects Browser
+                      Storage Browser
                     </h1>
                   </section>
                   <section
-                    class="pf-v6-c-page__main-section pf-m-fill object-browser-page-section"
+                    class="pf-v6-c-page__main-section pf-m-fill storage-browser-page-section"
                   >
                     <div
                       class="pf-v6-l-flex pf-m-row"
@@ -557,7 +557,7 @@ exports[`App tests should render default App component 1`] = `
                               data-ouia-safe="true"
                               data-pf-content="true"
                             >
-                              Bucket Selection:
+                              Storage Location:
                             </p>
                           </div>
                           <div
@@ -568,11 +568,19 @@ exports[`App tests should render default App component 1`] = `
                             >
                               <select
                                 aria-invalid="false"
-                                aria-label="FormSelect Input"
+                                aria-label="Select storage location"
                                 data-ouia-component-id="BasicFormSelect"
                                 data-ouia-component-type="PF6/FormSelect"
                                 data-ouia-safe="true"
-                              />
+                              >
+                                <option
+                                  class=""
+                                  disabled=""
+                                  value=""
+                                >
+                                  Loading locations...
+                                </option>
+                              </select>
                               <span
                                 class="pf-v6-c-form-control__utilities"
                               >
@@ -595,62 +603,6 @@ exports[`App tests should render default App component 1`] = `
                                 </span>
                               </span>
                             </span>
-                          </div>
-                        </div>
-                      </div>
-                      <div
-                        class=""
-                      >
-                        <div
-                          class="pf-v6-l-flex"
-                        >
-                          <div
-                            class=""
-                          >
-                            <p
-                              class="pf-v6-c-content--p"
-                              data-ouia-component-id="OUIA-Generated-Content-5"
-                              data-ouia-component-type="PF6/Content"
-                              data-ouia-safe="true"
-                              data-pf-content="true"
-                            >
-                              Bucket override:
-                            </p>
-                          </div>
-                          <div
-                            class=""
-                          >
-                            <span
-                              class="pf-v6-c-form-control buckets-list-filter-search"
-                            >
-                              <input
-                                aria-invalid="false"
-                                aria-label="search text input"
-                                data-ouia-component-id="OUIA-Generated-TextInputBase-1"
-                                data-ouia-component-type="PF6/TextInput"
-                                data-ouia-safe="true"
-                                placeholder="Filter objects..."
-                                type="search"
-                                value=""
-                              />
-                            </span>
-                          </div>
-                          <div
-                            class=""
-                          >
-                            <button
-                              class="pf-v6-c-button pf-m-secondary"
-                              data-ouia-component-id="RefreshBucket"
-                              data-ouia-component-type="PF6/Button"
-                              data-ouia-safe="true"
-                              type="button"
-                            >
-                              <span
-                                class="pf-v6-c-button__text"
-                              >
-                                Set bucket
-                              </span>
-                            </button>
                           </div>
                         </div>
                       </div>
@@ -681,10 +633,10 @@ exports[`App tests should render default App component 1`] = `
                             >
                               <a
                                 class="pf-v6-c-breadcrumb__link"
-                                href="/objects/:bucketName"
+                                href="/browse/undefined"
                               >
                                 <button
-                                  aria-label="bucket-name"
+                                  aria-label="location-name"
                                   class="pf-v6-c-button pf-m-link breadcrumb-button"
                                   data-ouia-component-id="OUIA-Generated-Button-link-1"
                                   data-ouia-component-type="PF6/Button"
@@ -692,36 +644,6 @@ exports[`App tests should render default App component 1`] = `
                                   type="button"
                                 />
                               </a>
-                            </li>
-                            <li
-                              class="pf-v6-c-breadcrumb__item"
-                            >
-                              <span
-                                class="pf-v6-c-breadcrumb__item-divider"
-                              >
-                                <svg
-                                  aria-hidden="true"
-                                  class="pf-v6-svg"
-                                  fill="currentColor"
-                                  height="1em"
-                                  role="img"
-                                  viewBox="0 0 256 512"
-                                  width="1em"
-                                >
-                                  <path
-                                    d="M224.3 273l-136 136c-9.4 9.4-24.6 9.4-33.9 0l-22.6-22.6c-9.4-9.4-9.4-24.6 0-33.9l96.4-96.4-96.4-96.4c-9.4-9.4-9.4-24.6 0-33.9L54.3 103c9.4-9.4 24.6-9.4 33.9 0l136 136c9.5 9.4 9.5 24.6.1 34z"
-                                  />
-                                </svg>
-                              </span>
-                              <button
-                                aria-label="folder-name"
-                                class="pf-v6-c-button pf-m-link breadcrumb-button"
-                                data-ouia-component-id="OUIA-Generated-Button-link-2"
-                                data-ouia-component-type="PF6/Button"
-                                data-ouia-safe="true"
-                                disabled=""
-                                type="button"
-                              />
                             </li>
                           </ol>
                         </nav>
@@ -766,10 +688,10 @@ exports[`App tests should render default App component 1`] = `
                               <input
                                 aria-invalid="false"
                                 aria-label="search text input"
-                                data-ouia-component-id="OUIA-Generated-TextInputBase-2"
+                                data-ouia-component-id="OUIA-Generated-TextInputBase-1"
                                 data-ouia-component-type="PF6/TextInput"
                                 data-ouia-safe="true"
-                                placeholder="Filter objects..."
+                                placeholder="Filter files (min 3 chars to server search)…"
                                 type="search"
                                 value=""
                               />
@@ -879,6 +801,56 @@ exports[`App tests should render default App component 1`] = `
                                   </span>
                                 </button>
                               </div>
+                              <div
+                                class="file-folder-buttons"
+                              >
+                                <span
+                                  class="pf-v6-c-form-control pf-m-disabled"
+                                >
+                                  <select
+                                    aria-invalid="false"
+                                    aria-label="Search mode"
+                                    data-ouia-component-id="SearchModeSelect"
+                                    data-ouia-component-type="PF6/FormSelect"
+                                    data-ouia-safe="true"
+                                    disabled=""
+                                  >
+                                    <option
+                                      class=""
+                                      value="contains"
+                                    >
+                                      Contains
+                                    </option>
+                                    <option
+                                      class=""
+                                      value="startsWith"
+                                    >
+                                      Starts with
+                                    </option>
+                                  </select>
+                                  <span
+                                    class="pf-v6-c-form-control__utilities"
+                                  >
+                                    <span
+                                      class="pf-v6-c-form-control__toggle-icon"
+                                    >
+                                      <svg
+                                        aria-hidden="true"
+                                        class="pf-v6-svg"
+                                        fill="currentColor"
+                                        height="1em"
+                                        role="img"
+                                        viewBox="0 0 320 512"
+                                        width="1em"
+                                      >
+                                        <path
+                                          d="M31.3 192h257.3c17.8 0 26.7 21.5 14.1 34.1L174.1 354.8c-7.8 7.8-20.5 7.8-28.3 0L17.2 226.1C4.6 213.5 13.5 192 31.3 192z"
+                                        />
+                                      </svg>
+                                    </span>
+                                  </span>
+                                </span>
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -894,7 +866,7 @@ exports[`App tests should render default App component 1`] = `
                           id=""
                         >
                           <table
-                            aria-label="Buckets list"
+                            aria-label="Files list"
                             class="pf-v6-c-table pf-m-grid-md pf-m-sticky-header"
                             data-ouia-component-id="OUIA-Generated-Table-1"
                             data-ouia-component-type="PF6/Table"
@@ -949,7 +921,11 @@ exports[`App tests should render default App component 1`] = `
                                   scope="col"
                                   tabindex="-1"
                                 >
-                                   
+                                  <span
+                                    class="pf-v6-u-screen-reader"
+                                  >
+                                    Actions
+                                  </span>
                                 </th>
                               </tr>
                             </thead>
@@ -971,7 +947,7 @@ exports[`App tests should render default App component 1`] = `
                           >
                             <small
                               class="pf-v6-c-content--small"
-                              data-ouia-component-id="OUIA-Generated-Content-6"
+                              data-ouia-component-id="OUIA-Generated-Content-5"
                               data-ouia-component-type="PF6/Content"
                               data-ouia-safe="true"
                               data-pf-content="true"
@@ -984,7 +960,7 @@ exports[`App tests should render default App component 1`] = `
                           >
                             <small
                               class="pf-v6-c-content--small"
-                              data-ouia-component-id="OUIA-Generated-Content-7"
+                              data-ouia-component-id="OUIA-Generated-Content-6"
                               data-ouia-component-type="PF6/Content"
                               data-ouia-safe="true"
                               data-pf-content="true"
@@ -997,7 +973,7 @@ exports[`App tests should render default App component 1`] = `
                           >
                             <small
                               class="pf-v6-c-content--small"
-                              data-ouia-component-id="OUIA-Generated-Content-8"
+                              data-ouia-component-id="OUIA-Generated-Content-7"
                               data-ouia-component-type="PF6/Content"
                               data-ouia-safe="true"
                               data-pf-content="true"

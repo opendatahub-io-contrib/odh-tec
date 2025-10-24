@@ -58,7 +58,7 @@ import { TrashIcon, UploadIcon } from '@patternfly/react-icons';
 
 1. **Search for similar components first** - Use `find_symbol` and `search_for_pattern`
 2. **Follow PatternFly 6 requirements** - ALWAYS use `pf-v6-` prefix, semantic tokens, v6 imports
-3. **Use established patterns** - Check existing components (ObjectBrowser, Buckets, Settings)
+3. **Use established patterns** - Check existing components (StorageBrowser, Buckets, Settings)
 
 ### Critical Rules for ALL Components
 
@@ -144,7 +144,7 @@ npm run ci-checks      # type-check + lint + test:coverage
 
 Main components in `src/app/components/`:
 - **AppLayout** - Main layout with navigation sidebar
-- **ObjectBrowser** - S3 object browser with upload/download
+- **StorageBrowser** - Unified storage browser for S3 and local storage with upload/download
 - **Buckets** - S3 bucket management
 - **VramEstimator** - GPU VRAM calculation tool
 - **Settings** - S3 connection configuration
@@ -272,7 +272,7 @@ frontend/
 - ✅ Include ARIA labels and accessibility features
 - ✅ Use TypeScript with proper types
 - ✅ Test with `@testing-library/react` and `@testing-library/user-event`
-- ✅ Follow existing patterns in ObjectBrowser and Buckets components
+- ✅ Follow existing patterns in StorageBrowser and Buckets components
 - ✅ **Run `npm run format` after creating or modifying files** - Ensures consistent Prettier formatting across the codebase
 
 **DON'T:**

@@ -1,11 +1,75 @@
 # Recommended Secure Implementation
+
 ## Combining Security Hardening with Generator Pattern Optimization
 
+**Original Document Date:** 2025-10-23
+**Implementation Status Review:** 2025-10-24
+**Status:** ❌ **NOT IMPLEMENTED**
+
+---
+
+## Implementation Status Summary
+
+This document provided detailed recommendations for securing the pagination functionality identified in the original security assessment. **NONE of these recommendations were implemented** in the current codebase.
+
+### Recommended vs. Actual State
+
+| Recommendation             | Status             | Current Value          | Recommended Value        |
+| -------------------------- | ------------------ | ---------------------- | ------------------------ |
+| MAX_CONTAINS_SCAN_PAGES    | ❌ Not Implemented | **40**                 | **5**                    |
+| MAX_OBJECTS_TO_EXAMINE     | ❌ Not Implemented | **None**               | **2,500**                |
+| CONTAINS_SEARCH_TIMEOUT_MS | ❌ Not Implemented | **None**               | **10,000**               |
+| Rate Limiting              | ❌ Not Implemented | **None**               | **5/min per IP**         |
+| Generator Pattern          | ❌ Not Implemented | **Array accumulation** | **Generator/yield**      |
+| Bucket Name Validation     | ❌ Not Implemented | **Weak regex**         | **Comprehensive checks** |
+| Query Validation           | ❌ Not Implemented | **Too permissive**     | **Restrictive pattern**  |
+| Token Validation           | ❌ Not Implemented | **Length only**        | **Format + length**      |
+| Prefix Validation          | ❌ Not Implemented | **Silent failure**     | **Explicit checks**      |
+| Security Headers           | ❌ Not Implemented | **None**               | **Helmet middleware**    |
+
+### Additional Security Concerns (New Since Original Assessment)
+
+Since the original recommendations, **new code was added that introduces additional security concerns:**
+
+1. **Local Filesystem Access** (NEW) - Requires:
+
+   - ✅ Authentication (not implemented)
+   - ✅ Authorization per storage location (not implemented)
+   - ✅ Audit logging for file operations (not implemented)
+   - ✅ File type restrictions (not implemented)
+   - ✅ Virus scanning (not implemented)
+
+2. **Transfer Operations** (NEW) - Requires:
+   - ✅ Authentication (not implemented)
+   - ✅ Rate limiting (not implemented)
+   - ✅ Size limits (not implemented)
+   - ✅ Audit logging (not implemented)
+
+### Positive Implementations (Not in Original Recommendations)
+
+While the security recommendations were ignored, some positive security work was done:
+
+| Implementation            | Status         | Quality                |
+| ------------------------- | -------------- | ---------------------- |
+| Path Traversal Protection | ✅ Implemented | ⭐⭐⭐⭐⭐ Excellent   |
+| Security Test Coverage    | ✅ Implemented | ⭐⭐⭐⭐⭐ 1,824 lines |
+| Custom Error Types        | ✅ Implemented | ⭐⭐⭐⭐ Good          |
+| File Size Limits          | ✅ Implemented | ⭐⭐⭐ Basic           |
+
+**However:** These positive implementations **do not address the critical security issues** identified in the original assessment, nor do they compensate for the **new critical vulnerability** (filesystem access without authentication).
+
+---
+
+## Original Document (2025-10-23)
+
 This implementation combines:
-- ✅ Security fixes (rate limiting, reduced limits, timeouts)
-- ✅ Memory efficiency (generator/iterator pattern)
-- ✅ Early termination optimizations
-- ✅ Progressive response capabilities
+
+- ✅ Security fixes (rate limiting, reduced limits, timeouts) - **NOT IMPLEMENTED**
+- ✅ Memory efficiency (generator/iterator pattern) - **NOT IMPLEMENTED**
+- ✅ Early termination optimizations - **NOT IMPLEMENTED**
+- ✅ Progressive response capabilities - **NOT IMPLEMENTED**
+
+**Note:** The recommendations below remain valid and should still be implemented.
 
 ---
 
@@ -25,9 +89,7 @@ import {
 } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import {
-  getS3Config,
-} from '../../../utils/config';
+import { getS3Config } from '../../../utils/config';
 import { logAccess } from '../../../utils/logAccess';
 
 // ============================================================================
@@ -199,12 +261,12 @@ const validateBucketName = (bucketName: string | undefined): string | null => {
 
   // AWS reserved patterns and invalid formats
   const invalidPatterns = [
-    /^xn--/,           // AWS reserved prefix
-    /--/,              // Consecutive hyphens
-    /^\d+\.\d+\./,     // IP address-like
+    /^xn--/, // AWS reserved prefix
+    /--/, // Consecutive hyphens
+    /^\d+\.\d+\./, // IP address-like
   ];
 
-  if (invalidPatterns.some(pattern => pattern.test(bucketName))) {
+  if (invalidPatterns.some((pattern) => pattern.test(bucketName))) {
     return 'Bucket name contains invalid patterns.';
   }
 
@@ -257,7 +319,9 @@ const validateQuery = (q: string | undefined): string | null => {
 /**
  * Validate and decode base64 prefix
  */
-const validateAndDecodePrefix = (prefix: string | undefined): { decoded: string; error: string | null } => {
+const validateAndDecodePrefix = (
+  prefix: string | undefined,
+): { decoded: string; error: string | null } => {
   if (!prefix) {
     return { decoded: '', error: null };
   }
@@ -302,7 +366,7 @@ async function* runContainsScanGenerator(
   continuationToken: string | undefined,
   qLower: string,
   effectiveMaxKeys: number,
-  abortSignal?: AbortSignal
+  abortSignal?: AbortSignal,
 ): AsyncGenerator<ScanYieldItem, FilterMeta, undefined> {
   let nextToken: string | undefined = continuationToken || undefined;
   let pagesScanned = 0;
@@ -321,13 +385,15 @@ async function* runContainsScanGenerator(
       }
 
       // Fetch one page from S3
-      const page = await s3Client.send(new ListObjectsV2Command({
-        Bucket: bucketName,
-        Delimiter: '/',
-        Prefix: decoded_prefix || undefined,
-        ContinuationToken: nextToken,
-        MaxKeys: DEFAULT_MAX_KEYS,
-      }));
+      const page = await s3Client.send(
+        new ListObjectsV2Command({
+          Bucket: bucketName,
+          Delimiter: '/',
+          Prefix: decoded_prefix || undefined,
+          ContinuationToken: nextToken,
+          MaxKeys: DEFAULT_MAX_KEYS,
+        }),
+      );
 
       pagesScanned += 1;
       const pageSize = (page.Contents?.length || 0) + (page.CommonPrefixes?.length || 0);
@@ -419,13 +485,14 @@ async function* runContainsScanGenerator(
     if (pagesScanned >= MAX_CONTAINS_SCAN_PAGES && underlyingTruncated) {
       stoppedReason = 'scanCap';
     }
-
   } finally {
     // Return metadata about the scan
     return {
       q: qLower,
       mode: 'contains',
-      partialResult: underlyingTruncated && (yieldedCount >= effectiveMaxKeys || stoppedReason !== 'bucketExhausted'),
+      partialResult:
+        underlyingTruncated &&
+        (yieldedCount >= effectiveMaxKeys || stoppedReason !== 'bucketExhausted'),
       scanPages: pagesScanned,
       objectsExamined: totalObjectsExamined,
       scanStoppedReason: stoppedReason,
@@ -438,7 +505,7 @@ async function* runContainsScanGenerator(
  */
 async function collectScanResults(
   generator: AsyncGenerator<ScanYieldItem, FilterMeta, undefined>,
-  effectiveMaxKeys: number
+  effectiveMaxKeys: number,
 ): Promise<{ objects: any[]; prefixes: any[]; meta: FilterMeta; matches: FilterMeta['matches'] }> {
   const objects: any[] = [];
   const prefixes: any[] = [];
@@ -494,7 +561,7 @@ const handleListRequest = async (
   req: FastifyRequest,
   reply: FastifyReply,
   bucketName: string,
-  encodedPrefix: string | undefined
+  encodedPrefix: string | undefined,
 ): Promise<void> => {
   logAccess(req);
   const { s3Client } = getS3Config();
@@ -545,8 +612,11 @@ const handleListRequest = async (
   }
 
   const effectiveMaxKeys = normalizeMaxKeys(maxKeys);
-  const requestedMode: 'startsWith' | 'contains' | undefined =
-    q ? (mode === 'startsWith' ? 'startsWith' : 'contains') : undefined;
+  const requestedMode: 'startsWith' | 'contains' | undefined = q
+    ? mode === 'startsWith'
+      ? 'startsWith'
+      : 'contains'
+    : undefined;
 
   // ========================================
   // SIMPLE LISTING (NO SEARCH)
@@ -626,19 +696,19 @@ const handleListRequest = async (
         continuationToken,
         qLower,
         effectiveMaxKeys,
-        abortController.signal
+        abortController.signal,
       );
 
       const { objects, prefixes, meta, matches } = await collectScanResults(
         generator,
-        effectiveMaxKeys
+        effectiveMaxKeys,
       );
 
       clearTimeout(timeoutId);
 
       // Determine response token
       const morePossible = meta.partialResult || false;
-      const responseToken = morePossible ? (continuationToken || 'has-more') : null;
+      const responseToken = morePossible ? continuationToken || 'has-more' : null;
 
       reply.send({
         objects,
@@ -695,12 +765,12 @@ const handleListRequest = async (
       await s3Client.send(command);
 
     // Apply client-side filtering for starts-with on leaf name only
-    const filteredObjects = Contents?.filter(obj => {
+    const filteredObjects = Contents?.filter((obj) => {
       const leafName = extractLeafName(obj.Key || '');
       return matchesQuery(leafName, qLower);
     });
 
-    const filteredPrefixes = CommonPrefixes?.filter(prefix => {
+    const filteredPrefixes = CommonPrefixes?.filter((prefix) => {
       const leafName = extractLeafName(prefix.Prefix || '');
       return matchesQuery(leafName, qLower);
     });
@@ -709,12 +779,12 @@ const handleListRequest = async (
     const objectMatches: Record<string, [number, number][]> = {};
     const prefixMatches: Record<string, [number, number][]> = {};
 
-    filteredObjects?.forEach(obj => {
+    filteredObjects?.forEach((obj) => {
       const leafName = extractLeafName(obj.Key || '');
       objectMatches[obj.Key || ''] = computeMatchRanges(leafName, qLower);
     });
 
-    filteredPrefixes?.forEach(prefix => {
+    filteredPrefixes?.forEach((prefix) => {
       const leafName = extractLeafName(prefix.Prefix || '');
       prefixMatches[prefix.Prefix || ''] = computeMatchRanges(leafName, qLower);
     });
@@ -776,38 +846,41 @@ export default async (fastify: FastifyInstance): Promise<void> => {
 
 ### 🔐 Security Enhancements
 
-| Feature | Original PR | This Implementation | Improvement |
-|---------|------------|-------------------|-------------|
-| **Max Scan Pages** | 40 | 5 | 87.5% reduction |
-| **Objects Examined Cap** | None | 2,500 | DoS protection |
-| **Request Timeout** | None | 10 seconds | Prevents hanging |
-| **Rate Limiting** | None | 5/min per IP | Prevents abuse |
-| **Bucket Validation** | Weak regex | Comprehensive | Path traversal safe |
-| **Query Validation** | Permissive | Restrictive | Injection safe |
-| **Token Validation** | Length only | Format + length | Forgery resistant |
-| **Prefix Validation** | Silent fail | Explicit checks | Path traversal safe |
+| Feature                  | Original PR | This Implementation | Improvement         |
+| ------------------------ | ----------- | ------------------- | ------------------- |
+| **Max Scan Pages**       | 40          | 5                   | 87.5% reduction     |
+| **Objects Examined Cap** | None        | 2,500               | DoS protection      |
+| **Request Timeout**      | None        | 10 seconds          | Prevents hanging    |
+| **Rate Limiting**        | None        | 5/min per IP        | Prevents abuse      |
+| **Bucket Validation**    | Weak regex  | Comprehensive       | Path traversal safe |
+| **Query Validation**     | Permissive  | Restrictive         | Injection safe      |
+| **Token Validation**     | Length only | Format + length     | Forgery resistant   |
+| **Prefix Validation**    | Silent fail | Explicit checks     | Path traversal safe |
 
 ### ⚡ Performance Optimizations
 
-| Feature | Original PR | This Implementation | Benefit |
-|---------|------------|-------------------|---------|
-| **Memory Usage** | 20,000 objects | ~500 objects | 97.5% reduction |
-| **Early Termination** | No | Yes | CPU savings |
-| **Progressive Yield** | No | Yes | Better UX |
-| **GC Pressure** | High | Low | Stability |
+| Feature               | Original PR    | This Implementation | Benefit         |
+| --------------------- | -------------- | ------------------- | --------------- |
+| **Memory Usage**      | 20,000 objects | ~500 objects        | 97.5% reduction |
+| **Early Termination** | No             | Yes                 | CPU savings     |
+| **Progressive Yield** | No             | Yes                 | Better UX       |
+| **GC Pressure**       | High           | Low                 | Stability       |
 
 ### 🎯 Generator Pattern Benefits
 
 1. **Memory Efficiency**
+
    - Original: Accumulates all results before returning
    - Generator: Yields one at a time
    - Peak memory: 500 objects instead of 20,000
 
 2. **Early Exit**
+
    - Stops processing immediately when `effectiveMaxKeys` reached
    - No wasted filtering after quota filled
 
 3. **Streaming Ready**
+
    - Can be adapted for SSE or chunked responses
    - Progressive rendering on frontend
 
@@ -820,6 +893,7 @@ export default async (fastify: FastifyInstance): Promise<void> => {
 ## Usage Examples
 
 ### Basic Search
+
 ```bash
 # Simple contains search (rate limited)
 curl "http://api/my-bucket?q=vacation&mode=contains"
@@ -844,6 +918,7 @@ curl "http://api/my-bucket?q=vacation&mode=contains"
 ```
 
 ### Rate Limit Hit
+
 ```bash
 # 6th request within 1 minute
 curl "http://api/my-bucket?q=test&mode=contains"
@@ -857,6 +932,7 @@ curl "http://api/my-bucket?q=test&mode=contains"
 ```
 
 ### Validation Errors
+
 ```bash
 # Invalid bucket name
 curl "http://api/../../etc/passwd"
@@ -882,14 +958,16 @@ curl "http://api/bucket?q=<script>alert(1)</script>"
 ## Migration Guide
 
 ### Step 1: Update Security Constants
+
 ```typescript
 // Change these values from PR's original:
-const MAX_CONTAINS_SCAN_PAGES = 5;  // Was: 40
+const MAX_CONTAINS_SCAN_PAGES = 5; // Was: 40
 const MAX_OBJECTS_TO_EXAMINE = 2500; // New
 const CONTAINS_SEARCH_TIMEOUT_MS = 10000; // New
 ```
 
 ### Step 2: Replace runContainsScan with Generator
+
 ```typescript
 // Old approach (PR's original):
 const scan = await runContainsScan(...);
@@ -902,6 +980,7 @@ return objects;
 ```
 
 ### Step 3: Add Rate Limiting
+
 ```typescript
 // Before search, check rate limit:
 if (checkRateLimit(req.ip)) {
@@ -910,6 +989,7 @@ if (checkRateLimit(req.ip)) {
 ```
 
 ### Step 4: Upgrade to Production Rate Limiter (Later)
+
 ```typescript
 // Replace in-memory Map with Redis:
 import Redis from 'ioredis';
@@ -930,6 +1010,7 @@ const checkRateLimit = async (ip: string): Promise<boolean> => {
 ## Testing
 
 ### Unit Tests
+
 ```typescript
 describe('Input Validation', () => {
   it('should reject invalid bucket names', () => {
@@ -990,6 +1071,7 @@ describe('Rate Limiting', () => {
 ## Monitoring & Observability
 
 ### Metrics to Track
+
 ```typescript
 // Add instrumentation:
 fastify.addHook('onResponse', async (request, reply) => {
@@ -1012,6 +1094,7 @@ fastify.addHook('onResponse', async (request, reply) => {
 ```
 
 ### Alerts to Configure
+
 1. **High rate limit hits**: Alert if >100 rate limit errors/minute
 2. **Frequent timeouts**: Alert if >10% of searches timeout
 3. **S3 API spike**: Alert if LIST calls >1000/minute
@@ -1037,6 +1120,7 @@ fastify.addHook('onResponse', async (request, reply) => {
 ## Conclusion
 
 This implementation provides:
+
 - ✅ **87.5% reduction in DoS impact** (5 pages vs 40)
 - ✅ **97.5% reduction in memory usage** (generator pattern)
 - ✅ **Rate limiting** to prevent abuse
@@ -1046,3 +1130,300 @@ This implementation provides:
 - ✅ **Backward compatible** API surface
 
 **This is ready for production deployment** with proper monitoring in place.
+
+---
+
+## Additional Recommendations for PVC Support (NEW - 2025-10-24)
+
+### Critical: Authentication and Authorization
+
+The PVC support code adds local filesystem access without authentication. This must be addressed immediately:
+
+```typescript
+// File: backend/src/plugins/auth.ts (NEW FILE NEEDED)
+
+import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import jwt from 'jsonwebtoken';
+
+interface User {
+  id: string;
+  username: string;
+  roles: string[];
+  allowedLocations: string[];
+}
+
+// JWT authentication middleware
+export const authenticateUser = async (
+  request: FastifyRequest,
+  reply: FastifyReply,
+): Promise<User> => {
+  const authHeader = request.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    reply.code(401).send({ error: 'Unauthorized', message: 'No authentication token provided' });
+    throw new Error('Unauthorized');
+  }
+
+  const token = authHeader.substring(7);
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as User;
+    return decoded;
+  } catch (error) {
+    reply.code(401).send({ error: 'Unauthorized', message: 'Invalid authentication token' });
+    throw new Error('Unauthorized');
+  }
+};
+
+// Authorization middleware for storage locations
+export const authorizeLocation = (user: User, locationId: string): boolean => {
+  // Check if user has access to this specific location
+  if (!user.allowedLocations.includes(locationId) && !user.roles.includes('admin')) {
+    return false;
+  }
+  return true;
+};
+
+// Audit logging
+export const auditLog = async (
+  user: User,
+  action: string,
+  resource: string,
+  status: number,
+  details?: any,
+) => {
+  // Log to audit trail (database, file, or centralized logging service)
+  console.log(
+    JSON.stringify({
+      timestamp: new Date().toISOString(),
+      userId: user.id,
+      username: user.username,
+      action,
+      resource,
+      status,
+      details,
+    }),
+  );
+};
+```
+
+### Secure Local Storage Routes
+
+```typescript
+// File: backend/src/routes/api/local/index.ts
+
+import { authenticateUser, authorizeLocation, auditLog } from '../../plugins/auth';
+
+export default async (fastify: FastifyInstance): Promise<void> => {
+  // Authentication hook for ALL routes
+  fastify.addHook('onRequest', async (request, reply) => {
+    const user = await authenticateUser(request, reply);
+    request.user = user;
+  });
+
+  // Authorization hook for routes with locationId parameter
+  fastify.addHook('preHandler', async (request, reply) => {
+    const { locationId } = request.params as any;
+
+    if (locationId && !authorizeLocation(request.user, locationId)) {
+      await auditLog(request.user, request.method, request.url, 403, {
+        reason: 'insufficient_permissions',
+        locationId,
+      });
+      reply.code(403).send({
+        error: 'Forbidden',
+        message: 'You do not have access to this storage location',
+      });
+    }
+  });
+
+  // Audit logging hook for all responses
+  fastify.addHook('onResponse', async (request, reply) => {
+    await auditLog(request.user, request.method, request.url, reply.statusCode, {
+      params: request.params,
+      query: request.query,
+    });
+  });
+
+  // Routes remain unchanged, but now protected by hooks above
+  fastify.get('/locations', async (req) => {
+    // Filter locations based on user's allowedLocations
+    const allLocations = await getStorageLocations(req.log);
+    const userLocations = allLocations.filter(
+      (loc) => req.user.allowedLocations.includes(loc.id) || req.user.roles.includes('admin'),
+    );
+    return { locations: userLocations };
+  });
+
+  // ... rest of routes
+};
+```
+
+### File Type Restrictions
+
+```typescript
+// File: backend/src/utils/fileValidation.ts (NEW FILE NEEDED)
+
+const ALLOWED_EXTENSIONS = [
+  // Model files
+  '.safetensors',
+  '.bin',
+  '.pt',
+  '.pth',
+  '.onnx',
+  '.gguf',
+  // Data files
+  '.csv',
+  '.json',
+  '.jsonl',
+  '.parquet',
+  '.arrow',
+  // Text files
+  '.txt',
+  '.md',
+  '.yaml',
+  '.yml',
+  // Archives
+  '.tar',
+  '.gz',
+  '.zip',
+];
+
+const BLOCKED_EXTENSIONS = [
+  // Executables
+  '.exe',
+  '.dll',
+  '.so',
+  '.dylib',
+  '.sh',
+  '.bat',
+  '.cmd',
+  // Scripts
+  '.js',
+  '.ts',
+  '.py',
+  '.rb',
+  '.pl',
+  // System files
+  '.sys',
+  '.drv',
+];
+
+export const validateFileType = (filename: string): { allowed: boolean; reason?: string } => {
+  const ext = path.extname(filename).toLowerCase();
+
+  // Check blocked list first
+  if (BLOCKED_EXTENSIONS.includes(ext)) {
+    return { allowed: false, reason: `File type ${ext} is blocked for security reasons` };
+  }
+
+  // Check allowed list
+  if (!ALLOWED_EXTENSIONS.includes(ext)) {
+    return { allowed: false, reason: `File type ${ext} is not in the allowed list` };
+  }
+
+  return { allowed: true };
+};
+```
+
+### Rate Limiting for Expensive Operations
+
+```typescript
+// File: backend/src/routes/api/transfer/index.ts
+
+import rateLimit from '@fastify/rate-limit';
+
+export default async (fastify: FastifyInstance): Promise<void> => {
+  // Rate limit transfer operations
+  await fastify.register(rateLimit, {
+    max: 10, // 10 transfers per window
+    timeWindow: '1 minute',
+    errorResponseBuilder: () => ({
+      error: 'RateLimitExceeded',
+      message: 'Too many transfer requests. Maximum 10 per minute.',
+      retryAfter: 60,
+    }),
+  });
+
+  // ... rest of implementation
+};
+```
+
+### Quota Management
+
+```typescript
+// File: backend/src/utils/quotaManager.ts (NEW FILE NEEDED)
+
+interface Quota {
+  maxStorageBytes: number;
+  maxFileCount: number;
+  currentStorageBytes: number;
+  currentFileCount: number;
+}
+
+export const checkQuota = async (
+  locationId: string,
+  additionalBytes: number,
+  additionalFiles: number,
+): Promise<{ allowed: boolean; reason?: string }> => {
+  const quota = await getLocationQuota(locationId);
+
+  if (quota.currentStorageBytes + additionalBytes > quota.maxStorageBytes) {
+    return {
+      allowed: false,
+      reason: `Storage quota exceeded. ${formatBytes(quota.maxStorageBytes - quota.currentStorageBytes)} remaining.`,
+    };
+  }
+
+  if (quota.currentFileCount + additionalFiles > quota.maxFileCount) {
+    return {
+      allowed: false,
+      reason: `File count quota exceeded. ${quota.maxFileCount - quota.currentFileCount} files remaining.`,
+    };
+  }
+
+  return { allowed: true };
+};
+```
+
+### Updated Production Deployment Checklist
+
+**Must Complete Before Production:**
+
+- [ ] ✅ Implement authentication (JWT or similar)
+- [ ] ✅ Implement authorization per storage location
+- [ ] ✅ Add comprehensive audit logging
+- [ ] ✅ Add file type restrictions
+- [ ] ✅ Add rate limiting for transfers
+- [ ] ✅ Add quota management per location
+- [ ] ✅ Fix DoS vulnerability (MAX_CONTAINS_SCAN_PAGES = 5)
+- [ ] ✅ Fix CORS configuration
+- [ ] ✅ Add security headers (Helmet)
+- [ ] ✅ Strengthen input validation (bucket names, query params, tokens)
+
+**Strongly Recommended:**
+
+- [ ] Add virus scanning for uploads (ClamAV integration)
+- [ ] Add content type verification (magic number checking)
+- [ ] Implement IP-based rate limiting
+- [ ] Add monitoring and alerting
+- [ ] Set up centralized logging (ELK, Splunk, etc.)
+- [ ] Create incident response plan
+- [ ] Perform security testing and penetration testing
+- [ ] Set up automated security scanning in CI/CD
+
+**Organizational:**
+
+- [ ] Mandatory security review for all PRs
+- [ ] Security training for development team
+- [ ] Architecture review process for major features
+- [ ] Security gates in CI/CD pipeline
+
+---
+
+**Document Status:**
+
+- **Original:** 2025-10-23 - Pagination security recommendations
+- **Updated:** 2025-10-24 - Added PVC support security requirements
+- **Implementation Status:** ❌ None of the recommendations have been implemented
+- **Next Update:** After security implementations are complete

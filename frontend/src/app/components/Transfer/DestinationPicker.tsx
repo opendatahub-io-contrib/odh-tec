@@ -40,8 +40,28 @@ export const DestinationPicker: React.FC<DestinationPickerProps> = ({
     if (isOpen) {
       storageService
         .getLocations()
-        .then(setLocations)
+        .then((locations) => {
+          setLocations(locations);
+
+          // Check if we got any available locations
+          const availableLocations = locations.filter((loc) => loc.available);
+          if (locations.length === 0) {
+            Emitter.emit('notification', {
+              variant: 'warning',
+              title: 'No storage locations available',
+              description:
+                'All storage sources failed to load. Check S3 and local storage configuration. See browser console for details.',
+            });
+          } else if (availableLocations.length === 0) {
+            Emitter.emit('notification', {
+              variant: 'warning',
+              title: 'All storage locations unavailable',
+              description: 'Storage locations exist but are not accessible. Check configuration.',
+            });
+          }
+        })
         .catch((error: any) => {
+          // This should not happen with allSettled, but keep as safety net
           console.error('Failed to fetch locations:', error);
           Emitter.emit('notification', {
             variant: 'danger',

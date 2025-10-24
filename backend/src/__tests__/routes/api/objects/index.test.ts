@@ -141,15 +141,17 @@ describe('Object Routes', () => {
     });
 
     it('should accept continuationToken query param for next page', async () => {
-      s3Mock.on(ListObjectsV2Command, {
-        Bucket: 'test-bucket',
-        Delimiter: '/',
-        ContinuationToken: 'TOKEN1',
-      }).resolves({
-        Contents: [{ Key: 'file2.txt' }],
-        CommonPrefixes: [],
-        IsTruncated: false,
-      });
+      s3Mock
+        .on(ListObjectsV2Command, {
+          Bucket: 'test-bucket',
+          Delimiter: '/',
+          ContinuationToken: 'TOKEN1',
+        })
+        .resolves({
+          Contents: [{ Key: 'file2.txt' }],
+          CommonPrefixes: [],
+          IsTruncated: false,
+        });
 
       const response = await fastify.inject({
         method: 'GET',
@@ -231,12 +233,14 @@ describe('Object Routes', () => {
     it('should return pagination tokens when truncated under a prefix', async () => {
       const prefix = 'folder/subfolder/';
       const encodedPrefix = Buffer.from(prefix).toString('base64');
-      s3Mock.on(ListObjectsV2Command, { Bucket: 'test-bucket', Prefix: prefix, Delimiter: '/' }).resolves({
-        Contents: [{ Key: prefix + 'fileA.txt' }],
-        CommonPrefixes: [{ Prefix: prefix + 'inner/' }],
-        IsTruncated: true,
-        NextContinuationToken: 'PTOKEN1',
-      });
+      s3Mock
+        .on(ListObjectsV2Command, { Bucket: 'test-bucket', Prefix: prefix, Delimiter: '/' })
+        .resolves({
+          Contents: [{ Key: prefix + 'fileA.txt' }],
+          CommonPrefixes: [{ Prefix: prefix + 'inner/' }],
+          IsTruncated: true,
+          NextContinuationToken: 'PTOKEN1',
+        });
 
       const response = await fastify.inject({
         method: 'GET',
@@ -252,16 +256,18 @@ describe('Object Routes', () => {
     it('should accept continuationToken for next page under a prefix', async () => {
       const prefix = 'folder/subfolder/';
       const encodedPrefix = Buffer.from(prefix).toString('base64');
-      s3Mock.on(ListObjectsV2Command, {
-        Bucket: 'test-bucket',
-        Prefix: prefix,
-        Delimiter: '/',
-        ContinuationToken: 'PTOKEN1',
-      }).resolves({
-        Contents: [{ Key: prefix + 'fileB.txt' }],
-        CommonPrefixes: [],
-        IsTruncated: false,
-      });
+      s3Mock
+        .on(ListObjectsV2Command, {
+          Bucket: 'test-bucket',
+          Prefix: prefix,
+          Delimiter: '/',
+          ContinuationToken: 'PTOKEN1',
+        })
+        .resolves({
+          Contents: [{ Key: prefix + 'fileB.txt' }],
+          CommonPrefixes: [],
+          IsTruncated: false,
+        });
 
       const response = await fastify.inject({
         method: 'GET',

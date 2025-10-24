@@ -22,7 +22,7 @@ import {
   getS3Config,
 } from '../../../utils/config';
 import { logAccess } from '../../../utils/logAccess';
-import { validatePath, SecurityError } from '../../../utils/localStorage';
+import { validatePath } from '../../../utils/localStorage';
 import { transferQueue, TransferFileJob } from '../../../utils/transferQueue';
 import {
   validateBucketName,
@@ -98,11 +98,13 @@ export default async (fastify: FastifyInstance): Promise<void> => {
   const MAX_ALLOWED_KEYS = 2000; // hard upper bound
 
   // 🔐 SECURITY: DoS Prevention - Reduced from 40 to 5
-  const MAX_CONTAINS_SCAN_PAGES = 5; // CHANGED FROM 40
+  const MAX_CONTAINS_SCAN_PAGES = 5;  // CHANGED FROM 40
 
-  // Future enhancements (not yet implemented):
-  // - const MAX_OBJECTS_TO_EXAMINE = 2500;
-  // - const CONTAINS_SEARCH_TIMEOUT_MS = 10000;
+  // 🔐 SECURITY: Maximum objects to examine across all pages
+  const MAX_OBJECTS_TO_EXAMINE = 2500;
+
+  // 🔐 SECURITY: Request timeout for expensive searches
+  const CONTAINS_SEARCH_TIMEOUT_MS = 10000; // 10 seconds
 
   // 🔐 SECURITY: Rate limiting for expensive operations
   const RATE_LIMIT_CONTAINS_SEARCH = 5; // requests per minute
@@ -114,12 +116,7 @@ export default async (fastify: FastifyInstance): Promise<void> => {
     partialResult?: boolean; // true when search stopped before exhausting bucket
     scanPages?: number; // number of S3 pages scanned (contains or broadened)
     objectsExamined?: number; // total objects examined across all pages
-    scanStoppedReason?:
-      | 'maxKeysReached'
-      | 'bucketExhausted'
-      | 'scanCap'
-      | 'examinedCap'
-      | 'timeout';
+    scanStoppedReason?: 'maxKeysReached' | 'bucketExhausted' | 'scanCap' | 'examinedCap' | 'timeout';
     autoBroaden?: boolean; // true when startsWith broadened to contains
     originalMode?: 'startsWith';
     matches?: {
@@ -128,12 +125,11 @@ export default async (fastify: FastifyInstance): Promise<void> => {
     };
   }
 
-  // Future enhancement: Generator pattern for memory efficiency
-  // interface ScanYieldItem {
-  //   type: 'object' | 'prefix';
-  //   data: any;
-  //   matchRanges?: [number, number][];
-  // }
+  interface ScanYieldItem {
+    type: 'object' | 'prefix';
+    data: any;
+    matchRanges?: [number, number][];
+  }
 
   const normalizeMaxKeys = (raw?: any): number => {
     const n = parseInt(raw, 10);
@@ -153,38 +149,37 @@ export default async (fastify: FastifyInstance): Promise<void> => {
     reply.send(payload);
   };
 
-  // Future enhancement: Helper functions for generator pattern
-  // const extractLeafName = (keyOrPrefix: string): string => {
-  //   if (keyOrPrefix.endsWith('/')) {
-  //     return keyOrPrefix.slice(0, -1).split('/').pop() || keyOrPrefix;
-  //   }
-  //   return keyOrPrefix.split('/').pop() || keyOrPrefix;
-  // };
+  /**
+   * Extract filename from S3 key or prefix
+   */
+  const extractLeafName = (keyOrPrefix: string): string => {
+    if (keyOrPrefix.endsWith('/')) {
+      return keyOrPrefix.slice(0, -1).split('/').pop() || keyOrPrefix;
+    }
+    return keyOrPrefix.split('/').pop() || keyOrPrefix;
+  };
 
-  // const matchesQuery = (name: string, qLower: string): boolean => {
-  //   return name.toLowerCase().includes(qLower);
-  // };
+  /**
+   * Filter objects and prefixes by substring match
+   */
+  const matchesQuery = (name: string, qLower: string): boolean => {
+    return name.toLowerCase().includes(qLower);
+  };
 
-  const applyFilter = (
+  const applyContainsFilter = (
     Contents: any[] | undefined,
     CommonPrefixes: any[] | undefined,
     qLower: string,
-    mode: 'startsWith' | 'contains' = 'contains',
   ) => {
-    const matchFn =
-      mode === 'startsWith'
-        ? (text: string) => text.toLowerCase().startsWith(qLower)
-        : (text: string) => text.toLowerCase().includes(qLower);
-
     const filteredObjects = Contents?.filter((o) => {
       const key: string = o.Key || '';
       const last = key.split('/').pop() || key;
-      return matchFn(last);
+      return last.toLowerCase().includes(qLower);
     });
     const filteredPrefixes = CommonPrefixes?.filter((p) => {
       const pref: string = p.Prefix || '';
       const last = pref.endsWith('/') ? pref.slice(0, -1).split('/').pop() : pref.split('/').pop();
-      return matchFn(last || '');
+      return (last || '').toLowerCase().includes(qLower);
     });
     return { filteredObjects, filteredPrefixes };
   };
@@ -236,7 +231,6 @@ export default async (fastify: FastifyInstance): Promise<void> => {
     continuationToken: string | undefined,
     qLower: string,
     effectiveMaxKeys: number,
-    mode: 'startsWith' | 'contains' = 'contains',
   ) => {
     let nextToken: string | undefined = continuationToken || undefined;
     let aggregatedObjects: any[] = [];
@@ -256,11 +250,10 @@ export default async (fastify: FastifyInstance): Promise<void> => {
         }),
       );
       pagesScanned += 1;
-      const { filteredObjects, filteredPrefixes } = applyFilter(
+      const { filteredObjects, filteredPrefixes } = applyContainsFilter(
         page.Contents,
         page.CommonPrefixes,
         qLower,
-        mode,
       );
       if (filteredObjects) aggregatedObjects.push(...filteredObjects);
       if (filteredPrefixes) aggregatedPrefixes.push(...filteredPrefixes);
@@ -404,11 +397,10 @@ export default async (fastify: FastifyInstance): Promise<void> => {
         });
         const { Contents, CommonPrefixes, NextContinuationToken, IsTruncated } =
           await s3Client.send(command);
-        const { filteredObjects, filteredPrefixes } = applyFilter(
+        const { filteredObjects, filteredPrefixes } = applyContainsFilter(
           Contents,
           CommonPrefixes,
           qLower,
-          requestedMode,
         );
 
         const shouldBroaden =
@@ -423,7 +415,6 @@ export default async (fastify: FastifyInstance): Promise<void> => {
             continuationToken,
             qLower,
             effectiveMaxKeys,
-            requestedMode,
           );
           const matches = addMatchMetadata(scan.aggregatedObjects, scan.aggregatedPrefixes, qLower);
           buildResponse(reply, {
@@ -491,7 +482,6 @@ export default async (fastify: FastifyInstance): Promise<void> => {
         continuationToken,
         qLower,
         effectiveMaxKeys,
-        requestedMode || 'contains',
       );
       const matches = addMatchMetadata(scan.aggregatedObjects, scan.aggregatedPrefixes, qLower);
       buildResponse(reply, {
@@ -954,9 +944,6 @@ export default async (fastify: FastifyInstance): Promise<void> => {
     const response = await axios.get(sourcePath, axiosOptions);
     const stream = response.data;
 
-    // Extract file size from Content-Length header
-    fileJob.size = parseInt(response.headers['content-length'] || '0', 10);
-
     // Track progress
     let loaded = 0;
     const progressTransform = new Transform({
@@ -982,26 +969,10 @@ export default async (fastify: FastifyInstance): Promise<void> => {
       await upload.done();
     } else {
       // Write to local storage
-      // First, ensure parent directory structure exists
-      const parentRelativePath = path.dirname(destPath);
-
-      // Get validated base path
-      const basePath = await validatePath(destLoc, '.');
-
-      // Construct parent absolute path
-      const normalizedParent = path.normalize(parentRelativePath || '.');
-      const parentAbsolutePath = path.join(basePath, normalizedParent);
-
-      // Security check: ensure parent doesn't escape base
-      if (!parentAbsolutePath.startsWith(basePath + path.sep) && parentAbsolutePath !== basePath) {
-        throw new SecurityError(`Path escapes allowed directory: ${parentRelativePath}`);
-      }
-
-      // Create directory structure recursively
-      await fs.mkdir(parentAbsolutePath, { recursive: true });
-
-      // Now validate the full file path (will succeed because parent exists)
       const absolutePath = await validatePath(destLoc, destPath);
+
+      // Ensure directory exists
+      await fs.mkdir(path.dirname(absolutePath), { recursive: true });
 
       // Stream to file
       await pipelineAsync(stream, progressTransform, createWriteStream(absolutePath));
@@ -1020,12 +991,9 @@ export default async (fastify: FastifyInstance): Promise<void> => {
         localPath,
         bucketName,
         modelId,
-        hfToken: requestHfToken,
+        hfToken,
         prefix,
       } = body;
-
-      // Use HF token from request or fall back to configured token
-      const hfToken = requestHfToken || getHFConfig();
 
       // Validate destination parameters
       if (destinationType === 's3' && !bucketName) {
@@ -1036,7 +1004,7 @@ export default async (fastify: FastifyInstance): Promise<void> => {
       }
 
       if (destinationType === 'local') {
-        if (!localLocationId || localPath === undefined) {
+        if (!localLocationId || !localPath) {
           return reply.code(400).send({
             error: 'ValidationError',
             message: 'localLocationId and localPath are required for local destination',
@@ -1118,19 +1086,10 @@ export default async (fastify: FastifyInstance): Promise<void> => {
       // Create transfer jobs
       const files = modelFiles.map((file) => {
         const fileUrl = `https://huggingface.co/${modelId}/resolve/main/${file.rfilename}`;
-
-        // Normalize paths to remove trailing slashes to avoid double-slash issues
-        const normalizedPrefix = prefix ? prefix.replace(/\/$/, '') : '';
-        const normalizedLocalPath = localPath ? localPath.replace(/\/$/, '') : '';
-
         const destinationPath =
           destinationType === 's3'
-            ? `s3:${bucketName}/${normalizedPrefix ? `${normalizedPrefix}/` : ''}${modelId}/${
-                file.rfilename
-              }`
-            : `local:${localLocationId}/${
-                normalizedLocalPath ? `${normalizedLocalPath}/` : ''
-              }${modelId}/${file.rfilename}`;
+            ? `s3:${bucketName}/${(prefix || '') + modelId}/${file.rfilename}`
+            : `local:${localLocationId}/${localPath}/${modelId}/${file.rfilename}`;
 
         return {
           sourcePath: fileUrl,
@@ -1145,12 +1104,12 @@ export default async (fastify: FastifyInstance): Promise<void> => {
       });
 
       // Return job ID and SSE URL
-      // SSE endpoint is at /api/transfer/progress/:jobId
-      // Return relative path (frontend prepends backend_api_url which includes /api)
+      // Note: SSE endpoint would be /api/transfer/progress/:jobId from Phase 1.5
+      // For now, we return the job ID for tracking
       return reply.send({
         message: 'Model import started',
         jobId,
-        sseUrl: `/transfer/progress/${jobId}`,
+        sseUrl: `/api/transfer/progress/${jobId}`,
       });
     },
   );

@@ -9,6 +9,8 @@ const mockedAxios = axios as jest.Mocked<typeof axios>;
 describe('StorageService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // Clear the locations cache to ensure tests are isolated
+    (storageService as any).locationsCache = null;
   });
 
   describe('getLocations', () => {
@@ -76,10 +78,80 @@ describe('StorageService', () => {
       });
     });
 
-    it('should throw error if API call fails', async () => {
-      mockedAxios.get.mockRejectedValueOnce(new Error('Network error'));
+    it('should return only S3 locations if local storage fails', async () => {
+      const s3Buckets = {
+        data: {
+          buckets: [{ Name: 'bucket1', Region: 'us-east-1', CreationDate: '2024-01-01' }],
+        },
+      };
 
-      await expect(storageService.getLocations()).rejects.toThrow('Network error');
+      mockedAxios.get
+        .mockResolvedValueOnce(s3Buckets)
+        .mockRejectedValueOnce(new Error('Local storage unavailable'));
+
+      const locations = await storageService.getLocations();
+
+      expect(locations).toHaveLength(1);
+      expect(locations[0]).toEqual({
+        id: 'bucket1',
+        name: 'bucket1',
+        type: 's3',
+        available: true,
+        region: 'us-east-1',
+      });
+    });
+
+    it('should return only local locations if S3 fails', async () => {
+      const localLocations = {
+        data: {
+          locations: [
+            { id: 'local-0', name: 'Data Storage', type: 'local', available: true, path: '/mnt/data' },
+          ],
+        },
+      };
+
+      mockedAxios.get
+        .mockRejectedValueOnce(new Error('S3 connection failed'))
+        .mockResolvedValueOnce(localLocations);
+
+      const locations = await storageService.getLocations();
+
+      expect(locations).toHaveLength(1);
+      expect(locations[0]).toEqual({
+        id: 'local-0',
+        name: 'Data Storage',
+        type: 'local',
+        available: true,
+        path: '/mnt/data',
+      });
+    });
+
+    it('should return empty array if both S3 and local storage fail', async () => {
+      mockedAxios.get
+        .mockRejectedValueOnce(new Error('S3 connection failed'))
+        .mockRejectedValueOnce(new Error('Local storage unavailable'));
+
+      const locations = await storageService.getLocations();
+
+      expect(locations).toHaveLength(0);
+    });
+
+    it('should log warnings when storage sources fail', async () => {
+      const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+
+      mockedAxios.get
+        .mockRejectedValueOnce(new Error('S3 error'))
+        .mockRejectedValueOnce(new Error('Local error'));
+
+      await storageService.getLocations();
+
+      expect(consoleWarnSpy).toHaveBeenCalledWith('S3 storage unavailable:', expect.anything());
+      expect(consoleWarnSpy).toHaveBeenCalledWith('Local storage unavailable:', expect.anything());
+      expect(consoleErrorSpy).toHaveBeenCalledWith('All storage sources failed to load');
+
+      consoleWarnSpy.mockRestore();
+      consoleErrorSpy.mockRestore();
     });
   });
 
@@ -145,7 +217,7 @@ describe('StorageService', () => {
       });
     });
 
-    it('should list local files and normalize them', async () => {
+    it('should list local files and normalize them with base64-encoded path', async () => {
       const localFiles = {
         data: {
           files: [
@@ -167,12 +239,15 @@ describe('StorageService', () => {
         },
       };
 
+      // beforeEach already mocked locations, just add the files response
       mockedAxios.get.mockResolvedValueOnce(localFiles);
 
       const result = await storageService.listFiles('local-0', 'path/to/');
 
+      // Local storage requires base64-encoded paths
+      const encodedPath = btoa('path/to/');
       expect(mockedAxios.get).toHaveBeenCalledWith(
-        `${config.backend_api_url}/local/files/local-0/path/to/`,
+        `${config.backend_api_url}/local/files/local-0/${encodedPath}`,
         {
           params: { limit: undefined, offset: undefined },
         },
@@ -244,15 +319,17 @@ describe('StorageService', () => {
       );
     });
 
-    it('should upload file to local storage', async () => {
+    it('should upload file to local storage with base64-encoded path', async () => {
       mockedAxios.post.mockResolvedValueOnce({ data: { uploaded: true } });
 
       const file = new File(['content'], 'test.txt', { type: 'text/plain' });
 
       await storageService.uploadFile('local-0', 'path/to/test.txt', file);
 
+      // Local storage requires base64-encoded paths
+      const encodedPath = btoa('path/to/test.txt');
       expect(mockedAxios.post).toHaveBeenCalledWith(
-        `${config.backend_api_url}/local/files/local-0/path/to/test.txt`,
+        `${config.backend_api_url}/local/files/local-0/${encodedPath}`,
         expect.any(FormData),
         {
           headers: {
@@ -292,13 +369,15 @@ describe('StorageService', () => {
       );
     });
 
-    it('should delete local file', async () => {
+    it('should delete local file with base64-encoded path', async () => {
       mockedAxios.delete.mockResolvedValueOnce({ data: { deleted: true } });
 
       await storageService.deleteFile('local-0', 'path/to/file.txt');
 
+      // Local storage requires base64-encoded paths
+      const encodedPath = btoa('path/to/file.txt');
       expect(mockedAxios.delete).toHaveBeenCalledWith(
-        `${config.backend_api_url}/local/files/local-0/path/to/file.txt`,
+        `${config.backend_api_url}/local/files/local-0/${encodedPath}`,
       );
     });
   });
@@ -332,13 +411,15 @@ describe('StorageService', () => {
       );
     });
 
-    it('should create local directory', async () => {
+    it('should create local directory with base64-encoded path', async () => {
       mockedAxios.post.mockResolvedValueOnce({ data: { created: true } });
 
       await storageService.createDirectory('local-0', 'path/to/folder');
 
+      // Local storage requires base64-encoded paths
+      const encodedPath = btoa('path/to/folder');
       expect(mockedAxios.post).toHaveBeenCalledWith(
-        `${config.backend_api_url}/local/directories/local-0/path/to/folder`,
+        `${config.backend_api_url}/local/directories/local-0/${encodedPath}`,
       );
     });
   });

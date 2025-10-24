@@ -136,15 +136,18 @@ describe('Local Storage API Routes', () => {
     });
 
     it('should list files in subdirectory', async () => {
+      const encodedPath = btoa('subdir');
       const response = await app.inject({
         method: 'GET',
-        url: '/api/local/files/local-0/subdir',
+        url: `/api/local/files/local-0/${encodedPath}`,
       });
 
       expect(response.statusCode).toBe(200);
       const payload = JSON.parse(response.payload);
       expect(payload.files).toHaveLength(1);
       expect(payload.files[0].name).toBe('nested.txt');
+      // Verify that the path includes the subfolder (e.g., "subdir/nested.txt")
+      expect(payload.files[0].path).toBe('subdir/nested.txt');
     });
 
     it('should return pagination metadata', async () => {
@@ -192,9 +195,10 @@ describe('Local Storage API Routes', () => {
     });
 
     it('should block path traversal attempt', async () => {
+      const encodedPath = btoa('../../../etc');
       const response = await app.inject({
         method: 'GET',
-        url: '/api/local/files/local-0/../../../etc',
+        url: `/api/local/files/local-0/${encodedPath}`,
       });
 
       // Path traversal should be blocked with either 403 (Forbidden) or 404 (Not Found)
@@ -205,9 +209,10 @@ describe('Local Storage API Routes', () => {
     });
 
     it('should return parent path correctly', async () => {
+      const encodedPath = btoa('subdir');
       const response = await app.inject({
         method: 'GET',
-        url: '/api/local/files/local-0/subdir',
+        url: `/api/local/files/local-0/${encodedPath}`,
       });
 
       expect(response.statusCode).toBe(200);
@@ -251,9 +256,11 @@ describe('Local Storage API Routes', () => {
         contentType: 'text/plain',
       });
 
+      // Path should include the full file path to match existing file (base64-encoded)
+      const encodedPath = btoa('file.txt');
       const response = await app.inject({
         method: 'POST',
-        url: '/api/local/files/local-0/',
+        url: `/api/local/files/local-0/${encodedPath}`,
         headers: form.getHeaders(),
         payload: form,
       });
@@ -274,9 +281,11 @@ describe('Local Storage API Routes', () => {
         contentType: 'text/plain',
       });
 
+      // Path should include the full file path (base64-encoded)
+      const encodedPath = btoa('large.txt');
       const response = await app.inject({
         method: 'POST',
-        url: '/api/local/files/local-0/',
+        url: `/api/local/files/local-0/${encodedPath}`,
         headers: form.getHeaders(),
         payload: form,
       });
@@ -314,9 +323,11 @@ describe('Local Storage API Routes', () => {
         contentType: 'text/plain',
       });
 
+      // Path should include the full file path (filename), base64-encoded
+      const encodedPath = btoa('newfile.txt');
       const response = await app.inject({
         method: 'POST',
-        url: '/api/local/files/local-0/',
+        url: `/api/local/files/local-0/${encodedPath}`,
         headers: form.getHeaders(),
         payload: form,
       });
@@ -326,13 +337,46 @@ describe('Local Storage API Routes', () => {
       expect(payload.uploaded).toBe(true);
       expect(payload.path).toBe('newfile.txt');
     });
+
+    it('should upload file to subdirectory (multi-file scenario)', async () => {
+      const form = new FormData();
+      const fileContent = 'file in subdirectory';
+      form.append('file', Buffer.from(fileContent), {
+        filename: 'nested.txt',
+        contentType: 'text/plain',
+      });
+
+      // Multi-file upload with subdirectory: currentPath + file.path
+      // Example: "models/" + "subdir/file.txt" = "models/subdir/file.txt"
+      const encodedPath = btoa('subdir/nested-upload.txt');
+      const response = await app.inject({
+        method: 'POST',
+        url: `/api/local/files/local-0/${encodedPath}`,
+        headers: form.getHeaders(),
+        payload: form,
+      });
+
+      expect(response.statusCode).toBe(200);
+      const payload = JSON.parse(response.payload);
+      expect(payload.uploaded).toBe(true);
+      expect(payload.path).toBe('subdir/nested-upload.txt');
+
+      // Verify file was created in correct location
+      const encodedCheckPath = btoa('subdir/nested-upload.txt');
+      const checkResponse = await app.inject({
+        method: 'GET',
+        url: `/api/local/view/local-0/${encodedCheckPath}`,
+      });
+      expect(checkResponse.statusCode).toBe(200);
+    });
   });
 
-  describe('GET /api/local/download/:locationId/:path*', () => {
+  describe('GET /api/local/view/:locationId/:path*', () => {
     it('should return 404 for non-existent file', async () => {
+      const encodedPath = btoa('nonexistent.txt');
       const response = await app.inject({
         method: 'GET',
-        url: '/api/local/download/local-0/nonexistent.txt',
+        url: `/api/local/view/local-0/${encodedPath}`,
       });
 
       expect(response.statusCode).toBe(404);
@@ -341,9 +385,47 @@ describe('Local Storage API Routes', () => {
     });
 
     it('should block path traversal attempt', async () => {
+      const encodedPath = btoa('../../../etc/passwd');
       const response = await app.inject({
         method: 'GET',
-        url: '/api/local/download/local-0/../../../etc/passwd',
+        url: `/api/local/view/local-0/${encodedPath}`,
+      });
+
+      // Path traversal should be blocked with either 403 (Forbidden) or 404 (Not Found)
+      expect([403, 404]).toContain(response.statusCode);
+      const payload = JSON.parse(response.payload);
+      expect(payload.error).toBeDefined();
+    });
+
+    it('should view file successfully', async () => {
+      const encodedPath = btoa('file.txt');
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/local/view/local-0/${encodedPath}`,
+      });
+
+      expect(response.statusCode).toBe(200);
+    });
+  });
+
+  describe('GET /api/local/download/:locationId/:path*', () => {
+    it('should return 404 for non-existent file', async () => {
+      const encodedPath = btoa('nonexistent.txt');
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/local/download/local-0/${encodedPath}`,
+      });
+
+      expect(response.statusCode).toBe(404);
+      const payload = JSON.parse(response.payload);
+      expect(payload.error).toBe('Not Found');
+    });
+
+    it('should block path traversal attempt', async () => {
+      const encodedPath = btoa('../../../etc/passwd');
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/local/download/local-0/${encodedPath}`,
       });
 
       // Path traversal should be blocked with either 403 (Forbidden) or 404 (Not Found)
@@ -353,9 +435,10 @@ describe('Local Storage API Routes', () => {
     });
 
     it('should download file with correct headers', async () => {
+      const encodedPath = btoa('file.txt');
       const response = await app.inject({
         method: 'GET',
-        url: '/api/local/download/local-0/file.txt',
+        url: `/api/local/download/local-0/${encodedPath}`,
       });
 
       expect(response.statusCode).toBe(200);
@@ -365,9 +448,10 @@ describe('Local Storage API Routes', () => {
     });
 
     it('should set Content-Length header', async () => {
+      const encodedPath = btoa('file.txt');
       const response = await app.inject({
         method: 'GET',
-        url: '/api/local/download/local-0/file.txt',
+        url: `/api/local/download/local-0/${encodedPath}`,
       });
 
       expect(response.statusCode).toBe(200);
@@ -377,9 +461,10 @@ describe('Local Storage API Routes', () => {
 
   describe('DELETE /api/local/files/:locationId/:path*', () => {
     it('should delete file successfully', async () => {
+      const encodedPath = btoa('file.txt');
       const response = await app.inject({
         method: 'DELETE',
-        url: '/api/local/files/local-0/file.txt',
+        url: `/api/local/files/local-0/${encodedPath}`,
       });
 
       expect(response.statusCode).toBe(200);
@@ -389,9 +474,10 @@ describe('Local Storage API Routes', () => {
     });
 
     it('should delete directory recursively', async () => {
+      const encodedPath = btoa('subdir');
       const response = await app.inject({
         method: 'DELETE',
-        url: '/api/local/files/local-0/subdir',
+        url: `/api/local/files/local-0/${encodedPath}`,
       });
 
       expect(response.statusCode).toBe(200);
@@ -400,10 +486,32 @@ describe('Local Storage API Routes', () => {
       expect(payload.itemCount).toBeGreaterThan(0);
     });
 
-    it('should return itemCount correctly', async () => {
+    it('should delete deeply nested directory with multiple levels', async () => {
+      // Create a complex nested structure
+      vol.mkdirSync('/opt/app-root/src/data/nested', { recursive: true });
+      vol.mkdirSync('/opt/app-root/src/data/nested/level1', { recursive: true });
+      vol.mkdirSync('/opt/app-root/src/data/nested/level1/level2', { recursive: true });
+      vol.writeFileSync('/opt/app-root/src/data/nested/file1.txt', 'content1');
+      vol.writeFileSync('/opt/app-root/src/data/nested/level1/file2.txt', 'content2');
+      vol.writeFileSync('/opt/app-root/src/data/nested/level1/level2/file3.txt', 'content3');
+
+      const encodedPath = btoa('nested');
       const response = await app.inject({
         method: 'DELETE',
-        url: '/api/local/files/local-0/file.txt',
+        url: `/api/local/files/local-0/${encodedPath}`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      const payload = JSON.parse(response.payload);
+      expect(payload.deleted).toBe(true);
+      expect(payload.itemCount).toBeGreaterThan(3); // At least 3 files + directories
+    });
+
+    it('should return itemCount correctly', async () => {
+      const encodedPath = btoa('file.txt');
+      const response = await app.inject({
+        method: 'DELETE',
+        url: `/api/local/files/local-0/${encodedPath}`,
       });
 
       expect(response.statusCode).toBe(200);
@@ -413,9 +521,10 @@ describe('Local Storage API Routes', () => {
     });
 
     it('should return 404 for non-existent file', async () => {
+      const encodedPath = btoa('nonexistent.txt');
       const response = await app.inject({
         method: 'DELETE',
-        url: '/api/local/files/local-0/nonexistent.txt',
+        url: `/api/local/files/local-0/${encodedPath}`,
       });
 
       expect(response.statusCode).toBe(404);
@@ -438,9 +547,10 @@ describe('Local Storage API Routes', () => {
 
   describe('POST /api/local/directories/:locationId/:path*', () => {
     it('should create directory successfully', async () => {
+      const encodedPath = btoa('newdir');
       const response = await app.inject({
         method: 'POST',
-        url: '/api/local/directories/local-0/newdir',
+        url: `/api/local/directories/local-0/${encodedPath}`,
       });
 
       expect(response.statusCode).toBe(200);
@@ -453,9 +563,10 @@ describe('Local Storage API Routes', () => {
       // First create parent directories so validatePath can verify them
       vol.mkdirSync('/opt/app-root/src/data/deep/nested', { recursive: true });
 
+      const encodedPath = btoa('deep/nested/dir');
       const response = await app.inject({
         method: 'POST',
-        url: '/api/local/directories/local-0/deep/nested/dir',
+        url: `/api/local/directories/local-0/${encodedPath}`,
       });
 
       expect(response.statusCode).toBe(200);
@@ -477,9 +588,10 @@ describe('Local Storage API Routes', () => {
     });
 
     it('should return correct response structure', async () => {
+      const encodedPath = btoa('testdir');
       const response = await app.inject({
         method: 'POST',
-        url: '/api/local/directories/local-0/testdir',
+        url: `/api/local/directories/local-0/${encodedPath}`,
       });
 
       expect(response.statusCode).toBe(200);
@@ -503,9 +615,10 @@ describe('Local Storage API Routes', () => {
     });
 
     it('should map NotFoundError to 404', async () => {
+      const encodedPath = btoa('nonexistent.txt');
       const response = await app.inject({
         method: 'DELETE',
-        url: '/api/local/files/local-0/nonexistent.txt',
+        url: `/api/local/files/local-0/${encodedPath}`,
       });
 
       expect(response.statusCode).toBe(404);

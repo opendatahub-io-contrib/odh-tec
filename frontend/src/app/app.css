@@ -168,11 +168,11 @@ body,
   max-width: 75%;
 }
 
-.object-browser-page-section {
+.storage-browser-page-section {
   position: relative;
 }
 
-.object-browser-page-section::after {
+.storage-browser-page-section::after {
   content: '';
   position: absolute;
   bottom: 0;

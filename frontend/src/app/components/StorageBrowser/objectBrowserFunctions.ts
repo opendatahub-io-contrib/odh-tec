@@ -1,7 +1,7 @@
 import * as React from 'react';
 import config from '@app/config';
 import axios from 'axios';
-import { S3Object, S3Objects, S3Prefix, S3Prefixes, ExtendedFile, BucketsList, Bucket, Owner } from './objectBrowserTypes';
+import { S3Object, S3Objects, S3Prefix, S3Prefixes, ExtendedFile, BucketsList, Bucket, Owner } from './storageBrowserTypes';
 import Emitter from '../../utils/emitter';
 import { NavigateFunction } from 'react-router';
 
@@ -31,9 +31,9 @@ export const loadBuckets = (bucketName: string, navigate: NavigateFunction, setB
                 setBucketsList(newBucketsState);
                 if (bucketName === ':bucketName') {
                     if (defaultBucket !== '')
-                        navigate(`/objects/${defaultBucket}`);
+                        navigate(`/browse/${defaultBucket}`);
                     else {
-                        navigate(`/objects/${buckets[0].Name}`);
+                        navigate(`/browse/${buckets[0].Name}`);
                     }
                 }
             } else {
@@ -203,7 +203,7 @@ export const deleteFile = (bucketName: string, decodedPrefix: string, selectedFi
     axios.delete(`${config.backend_api_url}/objects/${bucketName}/${btoa(selectedFile)}`)
         .then(response => {
             Emitter.emit('notification', { variant: 'success', title: 'File deleted', description: 'File "' + selectedFile.split('/').pop() + '" has been successfully deleted.' });
-            navigate(`/objects/${bucketName}/${btoa(decodedPrefix)}`);
+            navigate(`/browse/${bucketName}/${btoa(decodedPrefix)}`);
             setFileToDelete('');
             setIsDeleteFileModalOpen(false);
         })
@@ -218,7 +218,7 @@ export const deleteFolder = (bucketName: string, decodedPrefix: string, selected
     axios.delete(`${config.backend_api_url}/objects/${bucketName}/${btoa(selectedFolder)}`)
         .then(response => {
             Emitter.emit('notification', { variant: 'success', title: 'Folder deleted', description: 'Folder "' + selectedFolder.slice(0, -1).split('/').pop() + '" has been successfully deleted.' });
-            navigate(`/objects/${bucketName}/${btoa(decodedPrefix)}`);
+            navigate(`/browse/${bucketName}/${btoa(decodedPrefix)}`);
             setFolderToDelete('');
             setIsDeleteFolderModalOpen(false);
         })
@@ -243,7 +243,7 @@ export const createFolder = (bucketName: string, decodedPrefix: string, newFolde
             Emitter.emit('notification', { variant: 'success', title: 'Folder created', description: 'Folder "' + newFolderName + '" has been successfully created.' });
             setNewFolderName('');
             setIsCreateFolderModalOpen(false)
-            navigate(`/objects/${bucketName}/${btoa(decodedPrefix)}`);
+            navigate(`/browse/${bucketName}/${btoa(decodedPrefix)}`);
         })
         .catch(error => {
             console.error('Error creating folder', error);
