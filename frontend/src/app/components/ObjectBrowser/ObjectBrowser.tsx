@@ -121,8 +121,14 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
   }, []);
 
   // URL parameters
-  const { bucketName } = useParams<{ bucketName: string }>();
-  const { prefix } = useParams<{ prefix: string }>();
+  const { locationId, path } = useParams<{
+    locationId?: string;
+    path?: string;
+  }>();
+
+  // Temporary compatibility layer (will be removed in Phase 3)
+  const bucketName = locationId;
+  const prefix = path;
 
   // Buckets handling
   const [bucketsList, setBucketsList] = React.useState<BucketsList | null>(null);
@@ -198,12 +204,12 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
     setFormSelectBucket(value);
     setTextInputBucket(value);
     setSearchObjectText(''); // Clear search field when switching buckets
-    navigate(`/objects/${value}`);
+    navigate(`/browse/${value}`);
   };
 
   const handleBucketTextInputSend = (_event: React.MouseEvent<HTMLButtonElement>) => {
     setSearchObjectText(''); // Clear search field when navigating to different bucket
-    navigate(`/objects/${textInputBucket}`);
+    navigate(`/browse/${textInputBucket}`);
   };
 
   /*
@@ -369,7 +375,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
     setNextContinuationToken(null);
     setIsTruncated(false);
     setSearchObjectText(''); // Clear search field when navigating to folder
-    navigate(plainTextPrefix !== '' ? `/objects/${bucketName}/${btoa(plainTextPrefix)}` : `/objects/${bucketName}`);
+    navigate(plainTextPrefix !== '' ? `/browse/${bucketName}/${btoa(plainTextPrefix)}` : `/browse/${bucketName}`);
   };
 
   /*
@@ -705,7 +711,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
           description: 'File "' + oldFileName + '" has been successfully uploaded.',
         });
         resetSingleFileUploadPanel();
-        navigate(`/objects/${bucketName}/${btoa(decodedPrefix)}`);
+        navigate(`/browse/${bucketName}/${btoa(decodedPrefix)}`);
       })
       .catch((error) => {
         console.error('Error uploading file', error);
@@ -1215,7 +1221,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
           handleImportModelClose(_event);
           // Refresh if destination is current location
           if (destType === 's3' && hfBucketName === bucketName) {
-            navigate(`/objects/${bucketName}/${btoa(decodedPrefix)}`);
+            navigate(`/browse/${bucketName}/${btoa(decodedPrefix)}`);
           }
         }
       };
@@ -1354,7 +1360,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
         <Flex>
           <FlexItem>
             <Breadcrumb ouiaId="PrefixBreadcrumb">
-              <BreadcrumbItem to={`/objects/${bucketName}`}>
+              <BreadcrumbItem to={`/browse/${bucketName}`}>
                 <Button
                   variant="link"
                   className="breadcrumb-button"

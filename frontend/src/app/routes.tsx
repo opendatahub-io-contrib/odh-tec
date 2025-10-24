@@ -28,14 +28,14 @@ export type AppRouteConfig = IAppRoute | IAppRouteGroup;
 
 const routes: AppRouteConfig[] = [
   {
-    label: 'S3 Tools',
+    label: 'Storage Tools',
     isExpanded: true,
     routes: [
       {
         element: <ObjectBrowser />,
-        label: 'Object Browser',
-        path: '/objects/:bucketName/:prefix?',
-        title: 'Object Browser',
+        label: 'Storage Browser',
+        path: '/browse/:locationId?/:path?',
+        title: 'Storage Browser',
       },
       {
         element: <Buckets />,
@@ -58,7 +58,7 @@ const routes: AppRouteConfig[] = [
     ],
   },
   {
-    element: <Navigate to="/objects/:bucketName/:prefix?" />,
+    element: <Navigate to="/browse" />,
     path: '/',
     title: 'Redirect',
   },
@@ -69,7 +69,7 @@ const routes: AppRouteConfig[] = [
     title: 'Settings',
   },
   {
-    element: <Navigate to="/objects/:bucketName/:prefix?" />,
+    element: <Navigate to="/browse" />,
     path: '*',
     title: 'Redirect',
   },
