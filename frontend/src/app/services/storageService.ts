@@ -110,37 +110,69 @@ class StorageService {
   }
 
   /**
-   * List files at location
+   * List files at location with storage-specific pagination
+   *
+   * For S3: Uses continuationToken + maxKeys (AWS S3 standard pagination)
+   * For local storage: Uses limit + offset (SQL-style pagination)
+   *
+   * @param locationId - Storage location ID
+   * @param path - Path within the location
+   * @param options - Pagination options (storage-type specific)
+   *   - For S3: { continuationToken, maxKeys }
+   *   - For local: { limit, offset }
    */
   async listFiles(
     locationId: string,
     path: string = '',
-    limit?: number,
-    offset?: number,
-  ): Promise<{ files: FileEntry[]; totalCount: number }> {
+    options?: {
+      // S3 pagination (AWS standard)
+      continuationToken?: string;
+      maxKeys?: number;
+      // Local storage pagination (SQL-style)
+      limit?: number;
+      offset?: number;
+    },
+  ): Promise<{
+    files: FileEntry[];
+    totalCount?: number;
+    // S3-specific pagination fields
+    nextContinuationToken?: string | null;
+    isTruncated?: boolean;
+  }> {
     const location = await this.getLocation(locationId);
 
     try {
       if (location.type === 's3') {
+        // S3 uses continuationToken + maxKeys pagination
         const response = await axios.get(`${config.backend_api_url}/objects/${locationId}`, {
-          params: { prefix: path, limit, offset },
+          params: {
+            prefix: path,
+            continuationToken: options?.continuationToken,
+            maxKeys: options?.maxKeys,
+          },
         });
 
         return {
-          files: response.data.objects.map(this.normalizeS3Object),
-          totalCount: response.data.totalCount || response.data.objects.length,
+          files: response.data.objects?.map(this.normalizeS3Object) || [],
+          totalCount: response.data.objects?.length || 0,
+          nextContinuationToken: response.data.nextContinuationToken || null,
+          isTruncated: response.data.isTruncated || false,
         };
       } else {
+        // Local storage uses limit + offset pagination
         const response = await axios.get(
           `${config.backend_api_url}/local/files/${locationId}/${path}`,
           {
-            params: { limit, offset },
+            params: {
+              limit: options?.limit,
+              offset: options?.offset,
+            },
           },
         );
 
         return {
-          files: response.data.files.map(this.normalizeLocalFile),
-          totalCount: response.data.totalCount || response.data.files.length,
+          files: response.data.files?.map(this.normalizeLocalFile) || [],
+          totalCount: response.data.totalCount || response.data.files?.length || 0,
         };
       }
     } catch (error) {
