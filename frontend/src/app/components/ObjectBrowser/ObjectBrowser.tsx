@@ -2,6 +2,7 @@ import config from '@app/config';
 import { faDownload, faEye, faFile, faFolder, faTrash } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
+  Alert,
   Breadcrumb,
   BreadcrumbItem,
   Button,
@@ -911,7 +912,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
       [singleFilename]: { loaded: 0 },
     }));
 
-    // Upload to S3 progress feedback (backend-side progress)
+    // Upload to storage progress feedback (backend-side progress)
     const eventSource = new EventSource(
       `${config.backend_api_url}/objects/upload-progress/${btoa(fullPath)}`,
     );
@@ -923,7 +924,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
         updateS3Progress(singleFilename, Math.round((data.loaded / fileSize) * 100));
       }
       if (data.status === 'completed') {
-        console.log('Upload to S3 completed');
+        console.log('Upload to storage completed');
         eventSource.close();
         singleFileEventSource.current = null;
         delete uploadToS3Percentages[singleFilename];
@@ -1131,7 +1132,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
 
     const fileSize = fullFile.size;
 
-    // Upload to S3 progress feedback (backend-side progress)
+    // Upload to storage progress feedback (backend-side progress)
     const eventSource = new EventSource(`${config.backend_api_url}/objects/upload-progress/${btoa(fullPath)}`);
     multiFileEventSources.current.set(fullPath, eventSource);
 
@@ -1636,6 +1637,23 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
       <PageSection hasBodyWrapper={false}>
         <Content component={ContentVariants.h1}>Storage Browser</Content>
       </PageSection>
+      {selectedLocation && !selectedLocation.available && (
+        <PageSection hasBodyWrapper={false}>
+          <Alert
+            variant="warning"
+            title="Location Unavailable"
+            isInline
+          >
+            <p>
+              The storage location "{selectedLocation.name}" is currently unavailable.
+              {selectedLocation.type === 'local' && (
+                <span> The directory may be inaccessible or the path may be incorrect.</span>
+              )}
+            </p>
+            <p>File operations are disabled until the location becomes available.</p>
+          </Alert>
+        </PageSection>
+      )}
       <PageSection hasBodyWrapper={false} isFilled={true} className="object-browser-page-section">
         <Flex direction={{ default: 'row' }}>
           <FlexItem>
@@ -1705,7 +1723,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                   variant="link"
                   className="breadcrumb-button"
                   onClick={handlePathClick('')}
-                  aria-label="bucket-name"
+                  aria-label="location-name"
                 >
                   {selectedLocation?.name || locationId}
                 </Button>
@@ -1751,7 +1769,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                   type="search"
                   onChange={(_event, searchText) => setSearchObjectText(searchText)}
                   aria-label="search text input"
-                  placeholder="Filter objects (min 3 chars to server search)…"
+                  placeholder="Filter files (min 3 chars to server search)…"
                   customIcon={<SearchIcon />}
                   className="buckets-list-filter-search"
                 />
@@ -1848,7 +1866,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
               </Toolbar>
             )}
             <Card component="div">
-              <Table aria-label="Buckets list" isStickyHeader>
+              <Table aria-label="Files list" isStickyHeader>
                 <Thead>
                   <Tr>
                     <Th
@@ -2231,13 +2249,13 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
 
           {destType === 's3' ? (
             <>
-              <FormGroup label="Bucket" isRequired fieldId="hf-bucket">
+              <FormGroup label="Storage Location" isRequired fieldId="hf-bucket">
                 <FormSelect
                   value={hfBucketName}
                   onChange={(_event, val) => setHfBucketName(val as string)}
                   id="hf-bucket"
                 >
-                  <FormSelectOption value="" label="Select bucket..." isDisabled />
+                  <FormSelectOption value="" label="Select location..." isDisabled />
                   {locations
                     .filter((loc) => loc.type === 's3')
                     .map((bucket) => (
@@ -2334,7 +2352,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
           >
             <Progress
               value={uploadToS3Percentages[singleFilename]?.loaded ?? 0}
-              title="Upload to S3 progress"
+              title="Upload to storage progress"
               size={ProgressSize.sm}
             />
           </FlexItem>
