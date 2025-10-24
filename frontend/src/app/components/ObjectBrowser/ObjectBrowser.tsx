@@ -98,8 +98,6 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
         };
     }, []);
 
-    // Limit the number of concurrent file uploads or transfers
-    const [maxConcurrentTransfers, setMaxConcurrentTransfers] = React.useState(2);
   // Limit the number of concurrent file uploads or transfers
   const [maxConcurrentTransfers, setMaxConcurrentTransfers] = React.useState(2);
 
@@ -149,19 +147,6 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
         };
     }, []);
 
-    // Load buckets at startup and when location changes
-    React.useEffect(() => {
-        if (bucketName) {
-            loadBuckets(bucketName, navigate, (updatedBucketsList) => {
-                setBucketsList(updatedBucketsList);
-                if (bucketName === ':bucketName') {
-                    setFormSelectBucket(updatedBucketsList?.buckets[0]?.Name || '');
-                    setTextInputBucket(updatedBucketsList?.buckets[0]?.Name || '');
-                } else {
-                    setFormSelectBucket(bucketName);
-                    setTextInputBucket(bucketName);
-                }
-            });
   // Load buckets at startup and when location changes
   React.useEffect(() => {
     if (bucketName) {
@@ -174,46 +159,31 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
           setFormSelectBucket(bucketName);
           setTextInputBucket(bucketName);
         }
-    }, [location]);
-
-    // Refresh objects from the bucket when location changes
-    React.useEffect(() => {
-        if (bucketName) {
-            // Abort previous request
-            if (abortControllerRef.current) {
-                abortControllerRef.current.abort();
-            }
-            abortControllerRef.current = new AbortController();
-
-            setNextContinuationToken(null);
-            setIsTruncated(false);
-            setFilterMeta(null);
-            setS3Objects(null);
-            setS3Prefixes(null);            if (serverSearchActive) {
-                refreshObjects(bucketName, prefix || '', setDecodedPrefix, setS3Objects, setS3Prefixes, setNextContinuationToken, setIsTruncated, undefined, false, { q: searchObjectText, mode: searchMode }, setFilterMeta, abortControllerRef.current || undefined);
-            } else {
-                refreshObjects(bucketName, prefix || '', setDecodedPrefix, setS3Objects, setS3Prefixes, setNextContinuationToken, setIsTruncated, undefined, false, undefined, undefined, abortControllerRef.current || undefined);
-            }
-            setFormSelectBucket(bucketName);
-            if (bucketName === ':bucketName') { setTextInputBucket(''); } else { setTextInputBucket(bucketName); }
-        }
-    }, [location, prefix, searchObjectText, searchMode]);    // Handle bucket change in the dropdown
-    const handleBucketSelectorChange = (_event: React.FormEvent<HTMLSelectElement>, value: string) => {
-        setFormSelectBucket(value);
-        setTextInputBucket(value);
-        setSearchObjectText(''); // Clear search field when switching buckets
-        navigate(`/objects/${value}`);
       });
     }
   }, [location]);
 
-    const handleBucketTextInputSend = (_event: React.MouseEvent<HTMLButtonElement>) => {
-        setSearchObjectText(''); // Clear search field when navigating to different bucket
-        navigate(`/objects/${textInputBucket}`);
   // Refresh objects from the bucket when location changes
   React.useEffect(() => {
     if (bucketName) {
-      refreshObjects(bucketName, prefix || '', setDecodedPrefix, setS3Objects, setS3Prefixes);
+      // Abort previous request
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      abortControllerRef.current = new AbortController();
+
+      setNextContinuationToken(null);
+      setIsTruncated(false);
+      setFilterMeta(null);
+      setS3Objects(null);
+      setS3Prefixes(null);
+
+      if (serverSearchActive) {
+        refreshObjects(bucketName, prefix || '', setDecodedPrefix, setS3Objects, setS3Prefixes, setNextContinuationToken, setIsTruncated, undefined, false, { q: searchObjectText, mode: searchMode }, setFilterMeta, abortControllerRef.current || undefined);
+      } else {
+        refreshObjects(bucketName, prefix || '', setDecodedPrefix, setS3Objects, setS3Prefixes, setNextContinuationToken, setIsTruncated, undefined, false, undefined, undefined, abortControllerRef.current || undefined);
+      }
+
       setFormSelectBucket(bucketName);
       if (bucketName === ':bucketName') {
         setTextInputBucket('');
@@ -221,16 +191,18 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
         setTextInputBucket(bucketName);
       }
     }
-  }, [location, prefix]);
+  }, [location, prefix, searchObjectText, searchMode]);
 
   // Handle bucket change in the dropdown
   const handleBucketSelectorChange = (_event: React.FormEvent<HTMLSelectElement>, value: string) => {
     setFormSelectBucket(value);
     setTextInputBucket(value);
+    setSearchObjectText(''); // Clear search field when switching buckets
     navigate(`/objects/${value}`);
   };
 
   const handleBucketTextInputSend = (_event: React.MouseEvent<HTMLButtonElement>) => {
+    setSearchObjectText(''); // Clear search field when navigating to different bucket
     navigate(`/objects/${textInputBucket}`);
   };
 
@@ -267,10 +239,6 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
     const [deepSearchActive, setDeepSearchActive] = React.useState<boolean>(false);
     const [deepSearchPagesScanned, setDeepSearchPagesScanned] = React.useState<number>(0);
     const [deepSearchCancelled, setDeepSearchCancelled] = React.useState<boolean>(false);
-  const [searchObjectText, setSearchObjectText] = React.useState(''); // The text to search for in the objects names
-  const [decodedPrefix, setDecodedPrefix] = React.useState(''); // The decoded prefix (aka full "folder" path)
-  const [s3Objects, setS3Objects] = React.useState<S3Objects | null>(null); // The list of objects with the selected prefix ("folder")
-  const [s3Prefixes, setS3Prefixes] = React.useState<S3Prefixes | null>(null); // The list of prefixes ("subfolders") in the current prefix
 
     React.useEffect(() => {
         // On short searches (<3) just local filter; if we were previously server searching, reload unfiltered list.
@@ -320,11 +288,6 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
             );
         }, 400);        return () => { cancelled = true; clearTimeout(handle); };    }, [searchObjectText, searchMode]);
 
-    const columnNames = {
-        key: 'Key',
-        lastModified: 'Last Modified',
-        size: 'Size'
-    };
   const columnNames = {
     key: 'Key',
     lastModified: 'Last Modified',
@@ -359,13 +322,16 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
     }),
   );
 
-    const filteredPrefixRows = prefixRows.filter(row => {
-        if (row.prefix) {
-            const lastSegment = row.prefix.slice(0, -1).split('/').pop();
-            return lastSegment && lastSegment.toLowerCase().includes(searchObjectText.toLowerCase());
-        }
-        return false;    });    // Auto-trigger deep search for client-side searches when no matches found
-    React.useEffect(() => {
+  const filteredPrefixRows = prefixRows.filter((row) => {
+    if (row.prefix) {
+      const lastSegment = row.prefix.slice(0, -1).split('/').pop();
+      return lastSegment && lastSegment.toLowerCase().includes(searchObjectText.toLowerCase());
+    }
+    return false;
+  });
+
+  // Auto-trigger deep search for client-side searches when no matches found
+  React.useEffect(() => {
         if (!bucketName || deepSearchActive) return;
         if (searchObjectText.length === 0) return; // No search active
         if (!isTruncated || !nextContinuationToken) return; // No more pages
@@ -395,36 +361,16 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
         }
     }, [searchObjectText, filteredRows.length, filteredPrefixRows.length, isTruncated, nextContinuationToken, serverSearchActive, deepSearchActive, bucketName, isLoadingMore]);
 
-    // Helper to validate which files can be viewed
-    const validateFileView = (filename: string, size: number) => {
-        const allowedExtensions = ['txt', 'log', 'jpg', 'py', 'json', 'yaml', 'yml', 'md', 'html', 'css', 'js', 'ts', 'tsx', 'jsx', 'sh', 'bash', 'sql', 'csv', 'xml', 'png', 'gif', 'bmp', 'jpeg', 'svg', 'webp', 'ico'];
-        if (size > 1024 * 1024) {
-            return false;
-        }
-        if (!allowedExtensions.includes(filename.split('.').pop() || '')) {
-            return false;
-        }
-        return true;
-    }    // Navigate when clicking on a prefix
-    const handlePrefixClick = (plainTextPrefix: string) => (event: React.MouseEvent<HTMLButtonElement>) => {
-        setS3Objects(null);
-        setS3Prefixes(null);
-        setDecodedPrefix(plainTextPrefix);
-        setNextContinuationToken(null);
-        setIsTruncated(false);
-        setSearchObjectText(''); // Clear search field when navigating to folder
-        navigate(plainTextPrefix !== '' ? `/objects/${bucketName}/${btoa(plainTextPrefix)}` : `/objects/${bucketName}`);
-    }
-
-    /*
-      File viewing
-  const filteredPrefixRows = prefixRows.filter((row) => {
-    if (row.prefix) {
-      const lastSegment = row.prefix.slice(0, -1).split('/').pop();
-      return lastSegment && lastSegment.toLowerCase().includes(searchObjectText.toLowerCase());
-    }
-    return false;
-  });
+  // Navigate when clicking on a prefix
+  const handlePrefixClick = (plainTextPrefix: string) => (event: React.MouseEvent<HTMLButtonElement>) => {
+    setS3Objects(null);
+    setS3Prefixes(null);
+    setDecodedPrefix(plainTextPrefix);
+    setNextContinuationToken(null);
+    setIsTruncated(false);
+    setSearchObjectText(''); // Clear search field when navigating to folder
+    navigate(plainTextPrefix !== '' ? `/objects/${bucketName}/${btoa(plainTextPrefix)}` : `/objects/${bucketName}`);
+  };
 
   /*
       Multi-select state and handlers
@@ -509,7 +455,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
       await Promise.all(Array.from(selectedItems).map((path) => storageService.deleteFile(bucketName!, path)));
 
       // Refresh file list
-      refreshObjects(bucketName!, prefix || '', setDecodedPrefix, setS3Objects, setS3Prefixes);
+      refreshObjects(bucketName!, prefix || '', setDecodedPrefix, setS3Objects, setS3Prefixes, setNextContinuationToken, setIsTruncated, undefined, false, undefined, undefined, abortControllerRef.current || undefined);
       setSelectedItems(new Set());
 
       Emitter.emit('notification', {
@@ -579,31 +525,6 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
     return true;
   };
 
-  // Navigate when clicking on a prefix
-  const handlePrefixClick = (plainTextPrefix: string) => (event: React.MouseEvent<HTMLButtonElement>) => {
-    setS3Objects(null);
-    setS3Prefixes(null);
-    setDecodedPrefix(plainTextPrefix);
-    navigate(plainTextPrefix !== '' ? `/objects/${bucketName}/${btoa(plainTextPrefix)}` : `/objects/${bucketName}`);
-  };
-
-    // Utility function for consistent progress key generation
-    const generateProgressKey = (prefix: string, filename: string): string => {
-        const cleanPrefix = prefix.endsWith('/') ? prefix : (prefix ? prefix + '/' : '');
-        const cleanFilename = filename.replace(/^[\/\\]+/, ''); // Remove leading slashes
-        return cleanPrefix + cleanFilename;
-    };
-
-    const updateS3Progress = (key: string, value: number, status: string = '') => {
-        setUploadToS3Percentages(prevPercentages => ({
-            ...prevPercentages,
-            [key]: {
-                ...prevPercentages[key],
-                loaded: value,
-                status: status,
-            },
-        }));
-    }
   /*
       File viewing
     */
@@ -683,57 +604,11 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
     }));
   };
 
-        const formData = new FormData();
-        formData.append('file', singleFileUploadValue);        // Close previous EventSource if exists
-        if (singleFileEventSource.current) {
-            singleFileEventSource.current.close();
-        }
   /*
       Single file upload
     */
-
-        // Upload to S3 progress feedback
-        singleFileEventSource.current = new EventSource(`${config.backend_api_url}/objects/upload-progress/${btoa(decodedPrefix + singleFilename)}`);
-        singleFileEventSource.current.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            if (data.loaded !== 0 && data.status === 'uploading') {
-                updateS3Progress(singleFilename, Math.round((data.loaded / fileSize) * 100));
-            }
-            if (data.status === 'completed') {
-                console.log('Upload to S3 completed');
-                if (singleFileEventSource.current) {
-                    singleFileEventSource.current.close();
-                    singleFileEventSource.current = null;
-                }
-                delete uploadToS3Percentages[singleFilename];
-            }
-        };
   const [singleFileUploadValue, setSingleFileUploadValue] = React.useState<File | undefined>(undefined); // File reference
   const [singleFilename, setSingleFilename] = React.useState(''); // Filename
-
-        singleFileEventSource.current.onerror = () => {
-            if (singleFileEventSource.current) {
-                singleFileEventSource.current.close();
-                singleFileEventSource.current = null;
-            }
-        };
-
-        // Upload
-        abortUploadController.current = new AbortController();
-        axios.post(`${config.backend_api_url}/objects/upload/${bucketName}/${btoa(decodedPrefix + singleFilename)}`, formData, {
-            signal: abortUploadController.current.signal,
-            headers: {
-                'Content-Type': 'multipart/form-data'
-            },
-            onUploadProgress: (progressEvent) => {
-                updateProgress(singleFilename, Math.round((progressEvent.loaded / fileSize) * 100));
-            }
-        })
-            .then(response => {
-                const oldFileName = singleFilename;
-                Emitter.emit('notification', { variant: 'success', title: 'File uploaded', description: 'File "' + oldFileName + '" has been successfully uploaded.' });
-                resetSingleFileUploadPanel();
-                refreshObjects(bucketName!, prefix!, setDecodedPrefix, setS3Objects, setS3Prefixes, setNextContinuationToken, setIsTruncated, undefined, false, undefined, undefined, abortControllerRef.current || undefined);
   const [isUploadSingleFileModalOpen, setIsUploadSingleFileModalOpen] = React.useState(false);
   const handleUploadSingleFileModalToggle = (_event: KeyboardEvent | React.MouseEvent) => {
     setIsUploadSingleFileModalOpen(!isUploadSingleFileModalOpen);
@@ -1011,6 +886,8 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
 
     // Upload to S3 progress feedback
     const eventSource = new EventSource(`${config.backend_api_url}/objects/upload-progress/${btoa(fullPath)}`);
+    multiFileEventSources.current.set(fullPath, eventSource);
+
     eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (data.loaded !== 0 && data.status === 'uploading') {
@@ -1018,47 +895,25 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
       }
       if (data.status === 'completed') {
         updateS3Progress(fullPath, 100, data.status);
+        // Close and remove this specific EventSource
+        eventSource.close();
+        multiFileEventSources.current.delete(fullPath);
         setUploadedFiles((prevUploadedFiles) => {
-          const fileExists = prevUploadedFiles.some(
-            (file) => file.path === fullFile.path && file.loadResult === 'success',
-          );
+          const fileExists = prevUploadedFiles.some((file) => file.path === fullFile.path && file.loadResult === 'success');
           if (!fileExists) {
             return [...prevUploadedFiles, { fileName: fullFile.name, loadResult: 'success', path: fullFile.path }];
           }
           return prevUploadedFiles;
         });
-        refreshObjects(bucketName!, prefix!, setDecodedPrefix, setS3Objects, setS3Prefixes);
-        eventSource.close();
+        refreshObjects(bucketName!, prefix!, setDecodedPrefix, setS3Objects, setS3Prefixes, setNextContinuationToken, setIsTruncated, nextContinuationToken, true, undefined, undefined, abortControllerRef.current || undefined);
       }
     };
 
-        const formData = new FormData();
-        formData.append('file', file);        // Upload to S3 progress feedback
-        const eventSource = new EventSource(`${config.backend_api_url}/objects/upload-progress/${btoa(fullPath)}`);
-        multiFileEventSources.current.set(fullPath, eventSource);
-        eventSource.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            if (data.loaded !== 0 && data.status === 'uploading') {
-                updateS3Progress(fullPath, Math.round((data.loaded / fileSize) * 100), data.status);
-            }
-            if (data.status === 'completed') {
-                updateS3Progress(fullPath, 100, data.status);
-                // Close and remove this specific EventSource
-                eventSource.close();                multiFileEventSources.current.delete(fullPath);
-                setUploadedFiles((prevUploadedFiles) => {
-                    const fileExists = prevUploadedFiles.some(file =>
-                        file.path === fullFile.path && file.loadResult === 'success'
-                    );
-                    if (!fileExists) {
-                        return [
-                            ...prevUploadedFiles,
-                            { fileName: fullFile.name, loadResult: 'success', path: fullFile.path }
-                        ];
-                    }
-                    return prevUploadedFiles;                });
-                refreshObjects(bucketName!, prefix!, setDecodedPrefix, setS3Objects, setS3Prefixes, setNextContinuationToken, setIsTruncated, nextContinuationToken, true, undefined, undefined, abortControllerRef.current || undefined);
-            }
-        };
+    eventSource.onerror = () => {
+      eventSource.close();
+      multiFileEventSources.current.delete(fullPath);
+    };
+
     await axios
       .post(`${config.backend_api_url}/objects/upload/${bucketName}/${btoa(fullPath)}`, formData, {
         headers: {
@@ -1096,28 +951,6 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
     return null; // Explicitly return null when there's no error
   };
 
-        eventSource.onerror = () => {
-            eventSource.close();
-            multiFileEventSources.current.delete(fullPath);
-        };
-
-        await axios.post(`${config.backend_api_url}/objects/upload/${bucketName}/${btoa(fullPath)}`, formData, {
-            headers: {
-                'Content-Type': 'multipart/form-data'
-            },
-            onUploadProgress: (progressEvent) => {
-                updateProgress(fullPath, Math.round((progressEvent.loaded / fileSize) * 100));
-            }
-        })
-            .catch(error => {
-                console.error('Error uploading file', error);
-                Emitter.emit('notification', { variant: 'warning', title: error.response?.data?.error || 'File Upload Failed', description: error.response?.data?.message || String(error) });
-                setUploadedFiles((prevUploadedFiles) => [
-                    ...prevUploadedFiles,
-                    { loadError: error, fileName: fullFile.name, loadResult: 'danger', path: fullPath }
-                ]);
-            });
-    };
   const [successfullyUploadedFileCount, setSuccessfullyUploadedFileCount] = React.useState(0);
 
   React.useEffect(() => {
@@ -1300,17 +1133,6 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
     }
   }, [isImportModelModalOpen]);
 
-    interface DataValue {
-        loaded?: number;
-        status?: string;
-        total?: number;
-        error?: string;
-        message?: string;
-    }    const handleImportModelConfirm = (_event: React.MouseEvent) => {
-        // Close previous EventSource if exists
-        if (modelImportEventSource.current) {
-            modelImportEventSource.current.close();
-        }
   interface DataValue {
     loaded?: number;
     status?: string;
@@ -1329,11 +1151,6 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
     }
   };
 
-        modelImportEventSource.current = new EventSource(`${config.backend_api_url}/objects/import-model-progress`);
-        modelImportEventSource.current.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            if (modelFiles.length === 0) {
-                setModelFiles(Object.keys(data));
   // Filter locations for local storage
   const localLocations = locations.filter((loc) => loc.type === 'local' && loc.available);
 
@@ -1383,19 +1200,6 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
           }
         });
 
-            if (allCompleted) {
-                if (modelImportEventSource.current) {
-                    modelImportEventSource.current.close();
-                    modelImportEventSource.current = null;
-                }
-                Emitter.emit('notification', { variant: 'success', title: 'Model imported', description: 'Model "' + modelName + '" has been successfully imported.' });
-                setModelName('');
-                setModelFiles([]);
-                setUploadToS3Percentages({});
-                setIsImportModelModalOpen(false);
-                navigate(`/objects/${bucketName}/${btoa(decodedPrefix)}`);
-            }
-        };
         const allCompleted = Object.entries(data).every(([_, value]) => {
           const { status } = value as DataValue;
           return status === 'completed';
@@ -1416,28 +1220,6 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
         }
       };
 
-        modelImportEventSource.current.onerror = () => {
-            if (modelImportEventSource.current) {
-                modelImportEventSource.current.close();
-                modelImportEventSource.current = null;
-            }
-        };
-
-        const prefixToSend = btoa(decodedPrefix === '' ? 'there_is_no_prefix' : decodedPrefix); // We need to send something to respect the URL format
-        axios.get(`${config.backend_api_url}/objects/hf-import/${bucketName}/${prefixToSend}/${btoa(modelName)}`)
-            .then(response => {
-                Emitter.emit('notification', { variant: 'success', title: 'Model import', description: 'Model "' + modelName + '" import has successfully started.' });
-            })            .catch(error => {
-                Emitter.emit('notification', { variant: 'warning', title: 'Model import failed', description: error.response.data.message });
-                if (modelImportEventSource.current) {
-                    modelImportEventSource.current.close();
-                    modelImportEventSource.current = null;
-                }
-                setModelName('');
-                setModelFiles([]);
-                setUploadToS3Percentages({});
-                setIsImportModelModalOpen(false);
-            });
       eventSource.onerror = () => {
         eventSource.close();
         Emitter.emit('notification', {
@@ -1460,8 +1242,9 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
         description: error.response?.data?.message || 'Failed to start model import.',
       });
     }
+  };
 
-    const handleLoadMore = () => {
+  const handleLoadMore = () => {
         if (!isTruncated || !nextContinuationToken || isLoadingMore || deepSearchActive) return;
         setIsLoadingMore(true);        refreshObjects(
             bucketName!,
@@ -1511,342 +1294,6 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
         setDeepSearchActive(false);
     };
 
-    return (
-        <div>
-            <PageSection hasBodyWrapper={false}>
-                <Content component={ContentVariants.h1}>S3 Objects Browser</Content>
-            </PageSection>
-            <PageSection hasBodyWrapper={false} isFilled={true} className='object-browser-page-section'>
-                <Flex direction={{ default: 'row' }}>
-                    <FlexItem>
-                        <Flex>
-                            <FlexItem>
-                                <Content component={ContentVariants.p}>
-                                    Bucket Selection:
-                                </Content>
-                            </FlexItem>
-                            <FlexItem>
-                                <FormSelect className='bucket-select' value={formSelectBucket}
-                                    aria-label="FormSelect Input"
-                                    ouiaId="BasicFormSelect"
-                                    onChange={handleBucketSelectorChange}>
-                                    {bucketsList?.buckets.map(bucket => (
-                                        <FormSelectOption key={bucket.Name} value={bucket.Name} label={bucket.Name} />
-                                    ))}
-                                </FormSelect>
-                            </FlexItem>
-                        </Flex>
-                    </FlexItem>
-                    <FlexItem>
-                        <Flex>
-                            <FlexItem>
-                                <Content component={ContentVariants.p}>
-                                    Bucket override:
-                                </Content>
-                            </FlexItem>
-                            <FlexItem>
-                                <TextInput
-                                    value={textInputBucket}
-                                    onChange={(_event, textInputBucket) => setTextInputBucket(textInputBucket)}
-                                    onKeyDown={(event) => {
-                                        if (event.key === 'Enter') {
-                                            handleBucketTextInputSend(event as unknown as React.MouseEvent<HTMLButtonElement>);
-                                        }
-                                    }}
-                                    type="search"
-                                    aria-label="search text input"
-                                    placeholder="Filter objects..."
-                                    className='buckets-list-filter-search'
-                                />
-                            </FlexItem>
-                            <FlexItem>
-                                <Button variant="secondary" onClick={handleBucketTextInputSend} ouiaId="RefreshBucket">
-                                    Set bucket
-                                </Button>
-                            </FlexItem>
-                        </Flex>
-                    </FlexItem>
-                </Flex>
-            </PageSection>
-            <PageSection hasBodyWrapper={false} isFilled={true}>
-                <Flex>
-                    <FlexItem>
-                        <Breadcrumb ouiaId="PrefixBreadcrumb">
-                            <BreadcrumbItem
-                                to={`/objects/${bucketName}`}>
-                                <Button variant="link"
-                                    className='breadcrumb-button'
-                                    onClick={handlePrefixClick('')}
-                                    aria-label='bucket-name'
-                                >
-                                    {bucketName === ':bucketName' ? bucketsList?.buckets?.[0]?.Name : bucketName}
-                                </Button>
-                            </BreadcrumbItem>
-                            {decodedPrefix.slice(0, -1).split('/').map((part, index) => (
-                                <BreadcrumbItem
-                                    key={index}
-                                >
-                                    <Button variant="link"
-                                        className='breadcrumb-button'
-                                        onClick={handlePrefixClick(decodedPrefix.slice(0, -1).split('/').slice(0, index + 1).join('/') + '/')}
-                                        isDisabled={index === decodedPrefix.slice(0, -1).split('/').length - 1}
-                                        aria-label='folder-name'
-                                    >
-                                        {part}
-                                    </Button>
-                                </BreadcrumbItem>
-                            ))
-                            }
-                        </Breadcrumb>
-                    </FlexItem>
-                    <FlexItem>
-                        <Button variant="secondary" onClick={copyPrefixToClipboard} className='copy-path-button' ouiaId="CopyPath">
-                            Copy Path
-                        </Button>
-                    </FlexItem>
-                </Flex>
-            </PageSection>
-            <PageSection hasBodyWrapper={false} isFilled={true}>
-                <Flex direction={{ default: 'column' }}>
-                    <FlexItem>
-                        <Flex>
-                            <FlexItem>
-                                <TextInput
-                                    value={searchObjectText}
-                                    type="search"
-                                    onChange={(_event, searchText) => setSearchObjectText(searchText)}
-                                    aria-label="search text input"
-                                    placeholder="Filter objects (min 3 chars to server search)…"
-                                    customIcon={<SearchIcon />}
-                                    className='buckets-list-filter-search'
-                                />
-                            </FlexItem>
-                            <FlexItem align={{ default: 'alignRight' }}>
-                                <Flex>
-                                    <FlexItem className='file-folder-buttons'>
-                                        <Button variant="primary" onClick={handleCreateFolderModalToggle} ouiaId="ShowCreateFolderModal">
-                                            Create Folder</Button>
-                                    </FlexItem>
-                                    <FlexItem className='file-folder-buttons'>
-                                        <Button variant="primary" onClick={handleUploadSingleFileModalToggle} ouiaId="ShowUploadSingleFileModal">
-                                            Upload Single File</Button>
-                                    </FlexItem>
-                                    <FlexItem className='file-folder-buttons'>
-                                        <Button variant="primary" onClick={handleUploadFilesModalToggle} ouiaId="ShowUploadMultipleFileModal">
-                                            Upload Multiple Files</Button>
-                                    </FlexItem>
-                                    <FlexItem className='file-folder-buttons'>
-                                        <Button variant="primary" onClick={handleImportModelModalToggle} icon={<img className='button-logo' src={HfLogo} alt="HuggingFace Logo" />} ouiaId="ShowImportHFModal">
-                                            Import HF Model</Button>
-                                    </FlexItem>
-                                    <FlexItem className='file-folder-buttons'>
-                                        <FormSelect
-                                            value={searchMode}
-                                            aria-label='Search mode'
-                                            onChange={(_e, v) => setSearchMode(v as any)}
-                                            isDisabled={!serverSearchActive}
-                                            ouiaId='SearchModeSelect'
-                                        >
-                                            <FormSelectOption value='contains' label='Contains'/>
-                                            <FormSelectOption value='startsWith' label='Starts with'/>
-                                        </FormSelect>
-                                    </FlexItem>
-                                    {serverSearchActive && (
-                                        <FlexItem className='file-folder-buttons'>
-                                            <Button variant='secondary' onClick={() => { setSearchObjectText(''); }} ouiaId='ClearSearch'>Clear Search</Button>
-                                        </FlexItem>
-                                    )}
-                                </Flex>
-                            </FlexItem>
-                        </Flex>
-                    </FlexItem>
-                    <FlexItem>
-                        <Card component="div">
-                            <Table aria-label="Buckets list" isStickyHeader>
-                                <Thead>
-                                    <Tr>
-                                        <Th width={30}>{columnNames.key}</Th>
-                                        <Th width={10}>{columnNames.lastModified}</Th>
-                                        <Th width={10}>{columnNames.size}</Th>
-                                        <Th width={10}>&nbsp;</Th>
-                                    </Tr>
-                                </Thead>
-                                <Tbody>
-                                    {filteredPrefixRows.map((row, rowIndex) => (
-                                        <Tr key={rowIndex} className='bucket-row'>
-                                            <Td className='bucket-column'>
-                                                <Button variant="link" onClick={handlePrefixClick(row.prefix)} className='button-folder-link'>
-                                                    <FontAwesomeIcon icon={faFolder} className='folder-icon' />
-                                                    {row.prefix.slice(0, -1).split('/').pop()}
-                                                </Button>
-                                            </Td>
-                                            <Td className='bucket-column'></Td>
-                                            <Td className='bucket-column'></Td>
-                                            <Td className='bucket-column align-right'>
-                                                <ToolbarContent>
-                                                    <ToolbarGroup
-                                                        variant="action-group-plain"
-                                                        align={{ default: "alignEnd" }}
-                                                        gap={{ default: "gapMd", md: "gapMd" }}
-                                                    >
-                                                        <ToolbarItem>
-                                                            <Tooltip content={<div>Delete this folder.</div>}>
-                                                                <Button variant="danger" className='button-file-control'
-                                                                    onClick={handleDeleteFolderClick(row.prefix)}>
-                                                                    <FontAwesomeIcon icon={faTrash} />
-                                                                </Button>
-                                                            </Tooltip>
-                                                        </ToolbarItem>
-                                                    </ToolbarGroup>
-                                                </ToolbarContent>
-                                            </Td>
-                                        </Tr>
-                                    ))}
-                                </Tbody>
-                                <Tbody>
-                                    {filteredRows.map((row, rowIndex) => (
-                                        <Tr key={rowIndex} className='bucket-row'>
-                                            <Td className='bucket-column'>
-                                                <FontAwesomeIcon icon={faFile} className='file-icon' />
-                                                {row.key.split('/').pop()}
-                                            </Td>
-                                            <Td className='bucket-column'>{row.lastModified}</Td>
-                                            <Td className='bucket-column'>{row.size}</Td>
-                                            <Td className='bucket-column align-right'>
-                                                <ToolbarContent>
-                                                    <ToolbarGroup
-                                                        variant="action-group-plain"
-                                                        align={{ default: "alignEnd" }}
-                                                        gap={{ default: "gapMd", md: "gapMd" }}
-                                                    >
-                                                        <ToolbarItem gap={{ default: "gapLg" }}>
-                                                            <Tooltip content={<div>View this file.</div>}>
-                                                                <Button variant="primary" className='button-file-control'
-                                                                    isDisabled={!validateFileView(row.key.split('/').pop() || '', row.originalSize)}
-                                                                    onClick={handleObjectViewClick(row.key)}>
-                                                                    <FontAwesomeIcon icon={faEye} />
-                                                                </Button>
-                                                            </Tooltip>
-                                                        </ToolbarItem>
-                                                        <ToolbarItem gap={{ default: "gapLg" }}>
-                                                            <Tooltip content={<div>Download this file.</div>}>
-                                                                <Button component="a" variant="primary" className='button-file-control'
-                                                                    download={row.key.split('/').pop()}
-                                                                    href={`${config.backend_api_url}/objects/download/${bucketName}/${btoa(row.key)}`}>
-                                                                    <FontAwesomeIcon icon={faDownload} />
-                                                                </Button>
-                                                            </Tooltip>
-                                                        </ToolbarItem>
-                                                        <ToolbarItem variant='separator' />
-                                                        <ToolbarItem>
-                                                            <Tooltip content={<div>Delete this file.</div>}>
-                                                                <Button variant="danger" className='button-file-control'
-                                                                    onClick={handleDeleteFileClick(row.key)}>
-                                                                    <FontAwesomeIcon icon={faTrash} />
-                                                                </Button>
-                                                            </Tooltip>
-                                                        </ToolbarItem>
-                                                    </ToolbarGroup>
-                                                </ToolbarContent>
-                                            </Td>
-                                        </Tr>
-                                    ))}
-                                </Tbody>
-                            </Table>
-                            {isTruncated && nextContinuationToken && (
-                                <Flex className='load-more-container' justifyContent={{ default: 'justifyContentCenter' }} style={{ marginTop: '8px', marginBottom: '8px' }}>
-                                    <Button variant="secondary" onClick={handleLoadMore} isDisabled={isLoadingMore || deepSearchActive} ouiaId='LoadMoreObjects'>
-                                        {isLoadingMore ? 'Loading…' : 'Load more'}
-                                    </Button>
-                                </Flex>
-                            )}                            {/* Deep search helper UI disabled when server search active */}
-                            { !serverSearchActive && !deepSearchActive && !isLoadingMore && isTruncated && nextContinuationToken && searchObjectText.length >= 1 && (filteredRows.length + filteredPrefixRows.length === 0) && (
-                                <Flex justifyContent={{ default: 'justifyContentCenter' }} style={{ marginTop: '4px' }}>
-                                    <Button variant="link" onClick={initiateDeepSearch} ouiaId='DeepSearchTrigger'>
-                                        Search all remaining pages for "{searchObjectText}" (auto-load)
-                                    </Button>
-                                </Flex>
-                            )}
-                            { deepSearchActive && !serverSearchActive && (
-                                <Flex justifyContent={{ default: 'justifyContentCenter' }} style={{ marginTop: '4px' }}>
-                                    <Content component={ContentVariants.small}>
-                                        Auto searching… scanned {deepSearchPagesScanned} additional page{deepSearchPagesScanned === 1 ? '' : 's'}.
-                                    </Content>
-                                    <Button variant='link' onClick={cancelDeepSearch} ouiaId='DeepSearchCancel'>Cancel</Button>
-                                </Flex>
-                            )}                            { serverSearchActive && filterMeta && filterMeta.partialResult && (
-                                <Flex justifyContent={{ default: 'justifyContentCenter' }} style={{ marginTop: '4px' }}>
-                                    <Content component={ContentVariants.small} aria-live='polite'>
-                                        Showing first batch of matches for "{filterMeta.q}". Refine your search to narrow results.
-                                    </Content>
-                                </Flex>
-                            )}
-                            { serverSearchActive && isLoadingMore && isTruncated && nextContinuationToken && (filteredRows.length + filteredPrefixRows.length === 0) && (
-                                <Flex justifyContent={{ default: 'justifyContentCenter' }} style={{ marginTop: '4px' }}>
-                                    <Content component={ContentVariants.small} aria-live='polite'>
-                                        Auto-loading more pages to find matches for "{searchObjectText}"...
-                                    </Content>
-                                </Flex>
-                            )}
-                        </Card>
-                        <Flex direction={{ default: 'column' }} >
-                            <FlexItem className='file-list-notes' align={{ default: 'alignRight' }}>
-                                <Content component={ContentVariants.small}>
-                                    File viewer is only enabled for files smaller than 1MB and supported types.
-                                </Content>
-                            </FlexItem>
-                            <FlexItem className='file-list-notes' align={{ default: 'alignRight' }}>
-                                <Content component={ContentVariants.small}>
-                                    Deleting the last item in a folder will delete the folder.
-                                </Content>
-                            </FlexItem>
-                            <FlexItem className='file-list-notes' align={{ default: 'alignRight' }}>
-                                <Content component={ContentVariants.small}>
-                                    Download of large files may fail.
-                                </Content>
-                            </FlexItem>
-                        </Flex>
-                    </FlexItem>
-                </Flex>
-            </PageSection>
-            <Modal
-                title="File Preview"
-                isOpen={isFileViewerOpen}
-                onClose={handleFileViewerToggle}
-                actions={[
-                    <Button key="close" variant="primary" onClick={handleFileViewerToggle}>
-                        Close
-                    </Button>
-                ]}
-                ouiaId='file-viewer-modal'
-                className='file-viewer-modal'
-            >
-                <DocumentRenderer fileData={fileData} fileName={fileName} />
-            </Modal>
-            <Modal
-                title={"Delete file?"}
-                titleIconVariant="warning"
-                className="bucket-modal"
-                isOpen={isDeleteFileModalOpen}
-                onClose={handleDeleteFileModalToggle}
-                actions={[
-                    <Button key="confirm" variant='danger' onClick={handleDeleteFileConfirm} isDisabled={!validateFileToDelete()}>
-                        Delete file
-                    </Button>,
-                    <Button key="cancel" variant="secondary" onClick={handleDeleteFileCancel}>
-                        Cancel
-                    </Button>
-                ]}
-            >
-                <Content>
-                    <Content component={ContentVariants.p}>
-                        This action cannot be undone.
-                    </Content>
-                    <Content component={ContentVariants.p}>
-                        Type <strong>{selectedFile.split('/').pop()}</strong> to confirm deletion.
-                    </Content>
-                </Content>
-  };
   return (
     <div>
       <PageSection hasBodyWrapper={false}>
@@ -1958,7 +1405,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                   type="search"
                   onChange={(_event, searchText) => setSearchObjectText(searchText)}
                   aria-label="search text input"
-                  placeholder="Filter objects..."
+                  placeholder="Filter objects (min 3 chars to server search)…"
                   customIcon={<SearchIcon />}
                   className="buckets-list-filter-search"
                 />
@@ -1998,6 +1445,31 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                       Import HF Model
                     </Button>
                   </FlexItem>
+                  <FlexItem className="file-folder-buttons">
+                    <FormSelect
+                      value={searchMode}
+                      aria-label="Search mode"
+                      onChange={(_e, v) => setSearchMode(v as any)}
+                      isDisabled={!serverSearchActive}
+                      ouiaId="SearchModeSelect"
+                    >
+                      <FormSelectOption value="contains" label="Contains" />
+                      <FormSelectOption value="startsWith" label="Starts with" />
+                    </FormSelect>
+                  </FlexItem>
+                  {serverSearchActive && (
+                    <FlexItem className="file-folder-buttons">
+                      <Button
+                        variant="secondary"
+                        onClick={() => {
+                          setSearchObjectText('');
+                        }}
+                        ouiaId="ClearSearch"
+                      >
+                        Clear Search
+                      </Button>
+                    </FlexItem>
+                  )}
                 </Flex>
               </FlexItem>
             </Flex>
@@ -2158,6 +1630,55 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                 </Tbody>
               </Table>
             </Card>
+            {/* Pagination Controls */}
+            {isTruncated && !serverSearchActive && (
+              <Flex direction={{ default: 'row' }} style={{ marginTop: 'var(--pf-t--global--spacer--md)' }}>
+                <FlexItem>
+                  <Button
+                    variant="secondary"
+                    onClick={handleLoadMore}
+                    isDisabled={isLoadingMore || deepSearchActive}
+                    ouiaId="LoadMore"
+                  >
+                    {isLoadingMore ? 'Loading…' : `Load more (${nextContinuationToken ? 'more available' : 'last page'})`}
+                  </Button>
+                </FlexItem>
+              </Flex>
+            )}
+            {/* Deep Search UI */}
+            {deepSearchActive && (
+              <Flex direction={{ default: 'row' }} style={{ marginTop: 'var(--pf-t--global--spacer--md)' }}>
+                <FlexItem>
+                  <Content component={ContentVariants.p}>
+                    Deep search active... scanned {deepSearchPagesScanned} additional page(s)...
+                  </Content>
+                </FlexItem>
+                <FlexItem>
+                  <Button variant="secondary" onClick={cancelDeepSearch} ouiaId="CancelDeepSearch">
+                    Cancel
+                  </Button>
+                </FlexItem>
+              </Flex>
+            )}
+            {/* Server Search Messages */}
+            {serverSearchActive && filterMeta && (
+              <Flex direction={{ default: 'column' }} style={{ marginTop: 'var(--pf-t--global--spacer--md)' }}>
+                <FlexItem>
+                  <Content component={ContentVariants.p}>
+                    Showing partial results. {filterMeta.truncated ? 'More results may be available.' : ''}
+                  </Content>
+                </FlexItem>
+              </Flex>
+            )}
+            {!serverSearchActive && searchObjectText.length >= 3 && isTruncated && (
+              <Flex direction={{ default: 'column' }} style={{ marginTop: 'var(--pf-t--global--spacer--md)' }}>
+                <FlexItem>
+                  <Content component={ContentVariants.p}>
+                    Client-side filtering active. Results may be incomplete. Deep search will auto-trigger if no matches found.
+                  </Content>
+                </FlexItem>
+              </Flex>
+            )}
             <Flex direction={{ default: 'column' }}>
               <FlexItem className="file-list-notes" align={{ default: 'alignRight' }}>
                 <Content component={ContentVariants.small}>
@@ -2532,7 +2053,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
         onClose={() => {
           setIsTransferModalOpen(false);
           // Refresh file list after transfer completes
-          refreshObjects(bucketName!, prefix || '', setDecodedPrefix, setS3Objects, setS3Prefixes);
+          refreshObjects(bucketName!, prefix || '', setDecodedPrefix, setS3Objects, setS3Prefixes, setNextContinuationToken, setIsTruncated, undefined, false, undefined, undefined, abortControllerRef.current || undefined);
           // Clear selection
           setSelectedItems(new Set());
         }}
