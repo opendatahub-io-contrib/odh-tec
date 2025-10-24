@@ -1,4 +1,4 @@
-import { User } from '../plugins/auth';
+import type { User } from '../plugins/auth';
 
 declare module 'fastify' {
   interface FastifyRequest {
