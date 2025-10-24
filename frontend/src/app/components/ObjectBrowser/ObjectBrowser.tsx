@@ -45,19 +45,16 @@ import * as React from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import Emitter from '../../utils/emitter';
 import DocumentRenderer from '../DocumentRenderer/DocumentRenderer';
-import { createFolder, deleteFolder, deleteFile, loadBuckets, refreshObjects } from './objectBrowserFunctions';
+import { createFolder, deleteFolder, deleteFile } from './objectBrowserFunctions';
 import {
-  BucketsList,
   ObjectRow,
   PrefixRow,
   UploadedFile,
-  S3Objects,
-  S3Prefixes,
   ExtendedFile,
 } from './objectBrowserTypes';
 import HfLogo from '@app/assets/bgimages/hf-logo.svg';
 import pLimit from 'p-limit';
-import { storageService, StorageLocation } from '@app/services/storageService';
+import { storageService, StorageLocation, FileEntry } from '@app/services/storageService';
 import { TransferAction } from '@app/components/Transfer';
 
 interface ObjectBrowserProps {}
@@ -72,31 +69,31 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
   const location = useLocation();
   const abortUploadController = React.useRef<AbortController | null>(null);
 
-    // EventSource refs for proper cleanup
-    const singleFileEventSource = React.useRef<EventSource | null>(null);
-    const modelImportEventSource = React.useRef<EventSource | null>(null);
-    const multiFileEventSources = React.useRef<Map<string, EventSource>>(new Map());
+  // EventSource refs for proper cleanup
+  const singleFileEventSource = React.useRef<EventSource | null>(null);
+  const modelImportEventSource = React.useRef<EventSource | null>(null);
+  const multiFileEventSources = React.useRef<Map<string, EventSource>>(new Map());
 
-    // Cleanup EventSources on component unmount
-    React.useEffect(() => {
-        return () => {
-            // Close single file upload EventSource if open
-            if (singleFileEventSource.current) {
-                singleFileEventSource.current.close();
-                singleFileEventSource.current = null;
-            }
-            // Close model import EventSource if open
-            if (modelImportEventSource.current) {
-                modelImportEventSource.current.close();
-                modelImportEventSource.current = null;
-            }
-            // Close all multi-file EventSources
-            multiFileEventSources.current.forEach((eventSource) => {
-                eventSource.close();
-            });
-            multiFileEventSources.current.clear();
-        };
-    }, []);
+  // Cleanup EventSources on component unmount
+  React.useEffect(() => {
+    return () => {
+      // Close single file upload EventSource if open
+      if (singleFileEventSource.current) {
+        singleFileEventSource.current.close();
+        singleFileEventSource.current = null;
+      }
+      // Close model import EventSource if open
+      if (modelImportEventSource.current) {
+        modelImportEventSource.current.close();
+        modelImportEventSource.current = null;
+      }
+      // Close all multi-file EventSources
+      multiFileEventSources.current.forEach((eventSource) => {
+        eventSource.close();
+      });
+      multiFileEventSources.current.clear();
+    };
+  }, []);
 
   // Limit the number of concurrent file uploads or transfers
   const [maxConcurrentTransfers, setMaxConcurrentTransfers] = React.useState(2);
@@ -126,57 +123,34 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
     path?: string;
   }>();
 
-  // Temporary compatibility layer (will be removed in Phase 3)
-  const bucketName = locationId;
-  const prefix = path;
-
-  // Buckets handling
-  const [bucketsList, setBucketsList] = React.useState<BucketsList | null>(null);
-  const [formSelectBucket, setFormSelectBucket] = React.useState(bucketName);
-  const [textInputBucket, setTextInputBucket] = React.useState(bucketName === ':bucketName' ? '' : bucketName);
 
   // Unified storage locations (S3 + local)
   const [locations, setLocations] = React.useState<StorageLocation[]>([]);
   const [selectedLocation, setSelectedLocation] = React.useState<StorageLocation | null>(null);
   const [formSelectLocation, setFormSelectLocation] = React.useState(locationId || '');
 
-    // Insert server search states early to avoid use-before-declaration
-    const [searchObjectText, setSearchObjectText] = React.useState('');
-    const [searchMode, setSearchMode] = React.useState<'startsWith' | 'contains'>('contains');
-    const [filterMeta, setFilterMeta] = React.useState<any | null>(null);
-    const serverSearchActive = searchObjectText.length >= 3;
+  // Insert server search states early to avoid use-before-declaration
+  const [searchObjectText, setSearchObjectText] = React.useState('');
+  const [searchMode, setSearchMode] = React.useState<'startsWith' | 'contains'>('contains');
+  const [filterMeta, setFilterMeta] = React.useState<any | null>(null);
+  const serverSearchActive = searchObjectText.length >= 3;
 
-    // Component-specific abort controller
-    const abortControllerRef = React.useRef<AbortController | null>(null);
+  // Component-specific abort controller
+  const abortControllerRef = React.useRef<AbortController | null>(null);
 
-    React.useEffect(() => {
-        return () => {
-            // Cleanup: abort any pending requests
-            if (abortControllerRef.current) {
-                abortControllerRef.current.abort();
-            }
-        };
-    }, []);
-
-  // Load buckets at startup and when location changes
   React.useEffect(() => {
-    if (bucketName) {
-      loadBuckets(bucketName, navigate, (updatedBucketsList) => {
-        setBucketsList(updatedBucketsList);
-        if (bucketName === ':bucketName') {
-          setFormSelectBucket(updatedBucketsList?.buckets[0]?.Name || '');
-          setTextInputBucket(updatedBucketsList?.buckets[0]?.Name || '');
-        } else {
-          setFormSelectBucket(bucketName);
-          setTextInputBucket(bucketName);
-        }
-      });
-    }
-  }, [location]);
+    return () => {
+      // Cleanup: abort any pending requests
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
 
   // Load all storage locations (S3 + local) on mount
   React.useEffect(() => {
-    storageService.getLocations()
+    storageService
+      .getLocations()
       .then((allLocations) => {
         console.log('[ObjectBrowser] Loaded locations:', allLocations);
         setLocations(allLocations);
@@ -196,7 +170,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
     if (!locationId) {
       // No location selected - redirect to first available
       if (locations.length > 0) {
-        const firstAvailable = locations.find(loc => loc.available) || locations[0];
+        const firstAvailable = locations.find((loc) => loc.available) || locations[0];
         console.log('[ObjectBrowser] No location in URL, redirecting to:', firstAvailable.id);
         navigate(`/browse/${firstAvailable.id}`);
       }
@@ -209,7 +183,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
     }
 
     // Find location by ID
-    const location = locations.find(loc => loc.id === locationId);
+    const location = locations.find((loc) => loc.id === locationId);
 
     if (!location) {
       // Location not found
@@ -220,7 +194,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
         description: `Storage location "${locationId}" does not exist.`,
       });
       // Redirect to first available location
-      const firstAvailable = locations.find(loc => loc.available) || locations[0];
+      const firstAvailable = locations.find((loc) => loc.available) || locations[0];
       if (firstAvailable) {
         navigate(`/browse/${firstAvailable.id}`);
       } else {
@@ -243,53 +217,14 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
     console.log('[ObjectBrowser] Selected location:', location);
     setSelectedLocation(location);
     setFormSelectLocation(locationId);
-
   }, [locationId, locations, navigate]);
-
-  // Refresh objects from the bucket when location changes
-  React.useEffect(() => {
-    if (bucketName) {
-      // Abort previous request
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-      abortControllerRef.current = new AbortController();
-
-      setNextContinuationToken(null);
-      setIsTruncated(false);
-      setFilterMeta(null);
-      setS3Objects(null);
-      setS3Prefixes(null);
-
-      if (serverSearchActive) {
-        refreshObjects(bucketName, prefix || '', setDecodedPrefix, setS3Objects, setS3Prefixes, setNextContinuationToken, setIsTruncated, undefined, false, { q: searchObjectText, mode: searchMode }, setFilterMeta, abortControllerRef.current || undefined);
-      } else {
-        refreshObjects(bucketName, prefix || '', setDecodedPrefix, setS3Objects, setS3Prefixes, setNextContinuationToken, setIsTruncated, undefined, false, undefined, undefined, abortControllerRef.current || undefined);
-      }
-
-      setFormSelectBucket(bucketName);
-      if (bucketName === ':bucketName') {
-        setTextInputBucket('');
-      } else {
-        setTextInputBucket(bucketName);
-      }
-    }
-  }, [location, prefix, searchObjectText, searchMode]);
-
-  // Handle bucket change in the dropdown
-  const handleBucketSelectorChange = (_event: React.FormEvent<HTMLSelectElement>, value: string) => {
-    setFormSelectBucket(value);
-    setTextInputBucket(value);
-    setSearchObjectText(''); // Clear search field when switching buckets
-    navigate(`/browse/${value}`);
-  };
 
   // Handle location change in the dropdown
   const handleLocationSelectorChange = (_event: React.FormEvent<HTMLSelectElement>, value: string) => {
     console.log('[ObjectBrowser] Location selector changed to:', value);
 
     // Find the selected location
-    const newLocation = locations.find(loc => loc.id === value);
+    const newLocation = locations.find((loc) => loc.id === value);
 
     if (!newLocation) {
       console.error('[ObjectBrowser] Selected location not found:', value);
@@ -312,14 +247,9 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
     navigate(`/browse/${value}`);
   };
 
-  const handleBucketTextInputSend = (_event: React.MouseEvent<HTMLButtonElement>) => {
-    setSearchObjectText(''); // Clear search field when navigating to different bucket
-    navigate(`/browse/${textInputBucket}`);
-  };
-
   const handleLocationTextInputSend = (_event: React.MouseEvent<HTMLButtonElement>) => {
     // Validate location exists
-    const location = locations.find(loc => loc.id === formSelectLocation);
+    const location = locations.find((loc) => loc.id === formSelectLocation);
 
     if (!location) {
       Emitter.emit('notification', {
@@ -356,65 +286,226 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
   /*
       Objects display
     */
-    // Pagination state
-    const [decodedPrefix, setDecodedPrefix] = React.useState(''); // The decoded prefix (aka full "folder" path)
-    const [s3Objects, setS3Objects] = React.useState<S3Objects | null>(null); // The list of objects with the selected prefix ("folder")
-    const [s3Prefixes, setS3Prefixes] = React.useState<S3Prefixes | null>(null); // The list of prefixes ("subfolders") in the current prefix
-    const [nextContinuationToken, setNextContinuationToken] = React.useState<string | null>(null);
-    const [isTruncated, setIsTruncated] = React.useState<boolean>(false);
-    const [isLoadingMore, setIsLoadingMore] = React.useState<boolean>(false);
-    // Deep search (auto-pagination) state (disabled when serverSearchActive)
-    const [deepSearchActive, setDeepSearchActive] = React.useState<boolean>(false);
-    const [deepSearchPagesScanned, setDeepSearchPagesScanned] = React.useState<number>(0);
-    const [deepSearchCancelled, setDeepSearchCancelled] = React.useState<boolean>(false);
+  // Pagination state
+  const [currentPath, setCurrentPath] = React.useState('');
+  const [files, setFiles] = React.useState<FileEntry[]>([]);
+  const [directories, setDirectories] = React.useState<FileEntry[]>([]);
+  const [paginationToken, setPaginationToken] = React.useState<string | null>(null);
+  const [paginationOffset, setPaginationOffset] = React.useState(0);
+  const [isTruncated, setIsTruncated] = React.useState<boolean>(false);
+  const [isLoadingMore, setIsLoadingMore] = React.useState<boolean>(false);
+  // Deep search (auto-pagination) state (disabled when serverSearchActive)
+  const [deepSearchActive, setDeepSearchActive] = React.useState<boolean>(false);
+  const [deepSearchPagesScanned, setDeepSearchPagesScanned] = React.useState<number>(0);
+  const [deepSearchCancelled, setDeepSearchCancelled] = React.useState<boolean>(false);
 
-    React.useEffect(() => {
-        // On short searches (<3) just local filter; if we were previously server searching, reload unfiltered list.
-        if (!bucketName) return;
-        let cancelled = false;
-        if (!serverSearchActive) {
-            if (filterMeta) {
-                // We were in server mode, need to reset to baseline listing
-                setFilterMeta(null);
-                setNextContinuationToken(null);
-                setIsTruncated(false);                refreshObjects(
-                    bucketName,
-                    prefix || '',
-                    setDecodedPrefix,
-                    setS3Objects,
-                    setS3Prefixes,
-                    setNextContinuationToken,
-                    setIsTruncated,                    undefined,
-                    false,
-                    undefined,
-                    undefined,
-                    abortControllerRef.current || undefined
-                );
-            }
-            return;
+  // Helper function to format bytes to human-readable size
+  const formatBytes = (bytes: number): string => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+  };
+
+  // Unified file refresh function - replaces refreshObjects
+  const refreshFiles = React.useCallback(async (
+    location: StorageLocation,
+    path: string,
+    continuationToken?: string | null,
+    appendResults: boolean = false,
+    searchParams?: { q: string; mode: 'startsWith' | 'contains' },
+    abortController?: AbortController
+  ): Promise<void> => {
+    if (!location) {
+      console.warn('[refreshFiles] No location provided');
+      return;
+    }
+
+    try {
+      console.log('[refreshFiles] Loading files:', {
+        location: location.id,
+        path,
+        type: location.type,
+        append: appendResults
+      });
+
+      let response;
+
+      if (location.type === 's3') {
+        // S3: Use continuation token pagination
+        response = await storageService.listFiles(
+          location.id,
+          path,
+          {
+            continuationToken: continuationToken || undefined,
+            maxKeys: searchParams ? undefined : 1000,
+          }
+        );
+
+        // Update S3 pagination state
+        setPaginationToken(response.nextContinuationToken || null);
+        setIsTruncated(response.isTruncated || false);
+
+      } else {
+        // Local storage: Use offset pagination
+        const offset = appendResults ? paginationOffset : 0;
+
+        response = await storageService.listFiles(
+          location.id,
+          path,
+          {
+            limit: 1000,
+            offset,
+          }
+        );
+
+        // Update local pagination state
+        const hasMore = response.totalCount! > (offset + response.files.length);
+        setIsTruncated(hasMore);
+
+        // Update offset for next page
+        if (appendResults) {
+          setPaginationOffset(offset + response.files.length);
+        } else {
+          setPaginationOffset(response.files.length);
         }
-        // For server searches: debounce input
-        const handle = setTimeout(() => {
-            if (cancelled) return;
-            // Reset pagination & existing results, then fetch filtered first page
-            setNextContinuationToken(null);
-            setIsTruncated(false);
-            setS3Objects(null);
-            setS3Prefixes(null);
-            setFilterMeta(null);            refreshObjects(
-                bucketName,
-                prefix || '',
-                setDecodedPrefix,
-                setS3Objects,
-                setS3Prefixes,
-                setNextContinuationToken,
-                setIsTruncated,
-                undefined,                false,
-                { q: searchObjectText, mode: searchMode },
-                setFilterMeta,
-                abortControllerRef.current || undefined
-            );
-        }, 400);        return () => { cancelled = true; clearTimeout(handle); };    }, [searchObjectText, searchMode]);
+      }
+
+      // Separate files and directories from FileEntry array
+      const dirEntries = response.files.filter(f => f.type === 'directory');
+      const fileEntries = response.files.filter(f => f.type === 'file');
+
+      console.log('[refreshFiles] Results:', {
+        files: fileEntries.length,
+        directories: dirEntries.length,
+        hasMore: response.isTruncated || (response.totalCount! > (paginationOffset + response.files.length))
+      });
+
+      if (appendResults) {
+        // Append to existing results (pagination)
+        setDirectories(prev => [...prev, ...dirEntries]);
+        setFiles(prev => [...prev, ...fileEntries]);
+      } else {
+        // Replace results (new path or refresh)
+        setDirectories(dirEntries);
+        setFiles(fileEntries);
+      }
+
+      setCurrentPath(path);
+
+    } catch (error: any) {
+      if (error.name === 'AbortError' || error.name === 'CanceledError') {
+        console.log('[refreshFiles] Request aborted');
+        return;
+      }
+
+      console.error('[refreshFiles] Failed:', error);
+      Emitter.emit('notification', {
+        variant: 'warning',
+        title: 'Error Loading Files',
+        description: error.response?.data?.message || 'Failed to load files from storage.',
+      });
+
+      // Clear results on error
+      setDirectories([]);
+      setFiles([]);
+    }
+  }, [paginationOffset]); // Dependencies: only paginationOffset (others are setters)
+
+  // Temporary compatibility layer (will be removed in Phase 4)
+  // Allows old code to reference new variables
+  const bucketName = locationId;
+  const prefix = path;
+  const decodedPrefix = currentPath;
+
+  // Load files when location or path changes
+  React.useEffect(() => {
+    if (!selectedLocation) {
+      console.log('[ObjectBrowser] No location selected, skipping file load');
+      return;
+    }
+
+    if (!selectedLocation.available) {
+      console.warn('[ObjectBrowser] Location unavailable, showing empty view');
+      setDirectories([]);
+      setFiles([]);
+      return;
+    }
+
+    console.log('[ObjectBrowser] Loading files for location:', selectedLocation.id);
+
+    // Abort previous request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+
+    // Reset pagination
+    setPaginationToken(null);
+    setPaginationOffset(0);
+    setIsTruncated(false);
+
+    // Load files
+    refreshFiles(
+      selectedLocation,
+      path || '',
+      null,
+      false,
+      serverSearchActive ? { q: searchObjectText, mode: searchMode } : undefined,
+      abortControllerRef.current || undefined
+    );
+
+  }, [selectedLocation, path, refreshFiles]);
+
+  React.useEffect(() => {
+    // On short searches (<3) just local filter; if we were previously server searching, reload unfiltered list.
+    if (!bucketName) return;
+    let cancelled = false;
+    if (!serverSearchActive) {
+      if (filterMeta) {
+        // We were in server mode, need to reset to baseline listing
+        setFilterMeta(null);
+        setPaginationToken(null);
+        setIsTruncated(false);
+        if (selectedLocation && selectedLocation.available) {
+          refreshFiles(
+            selectedLocation,
+            path || '',
+            null,
+            false,
+            undefined,
+            abortControllerRef.current || undefined
+          );
+        }
+      }
+      return;
+    }
+    // For server searches: debounce input
+    const handle = setTimeout(() => {
+      if (cancelled) return;
+      // Reset pagination & existing results, then fetch filtered first page
+      setPaginationToken(null);
+      setIsTruncated(false);
+      setFiles([]);
+      setDirectories([]);
+      setFilterMeta(null);
+      if (selectedLocation && selectedLocation.available) {
+        refreshFiles(
+          selectedLocation,
+          path || '',
+          null,
+          false,
+          { q: searchObjectText, mode: searchMode },
+          abortControllerRef.current || undefined
+        );
+      }
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [searchObjectText, searchMode, selectedLocation, path, refreshFiles]);
 
   const columnNames = {
     key: 'Key',
@@ -422,82 +513,82 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
     size: 'Size',
   };
 
-  // Convert the S3 objects and prefixes to rows
-  const prefixRows: PrefixRow[] = s3Prefixes
-    ? s3Prefixes.s3Prefixes.map((s3Prefix) => ({
-        prefix: s3Prefix.Prefix,
-      }))
-    : [];
-
-  const objectRows: ObjectRow[] = s3Objects
-    ? s3Objects.s3Objects.map((s3Object) => ({
-        key: s3Object.Key,
-        lastModified: s3Object.LastModified,
-        size: s3Object.Size,
-        originalSize: s3Object.OriginalSize,
-      }))
-    : [];
-
-  // Filter the rows on all fields based on the search text
-  const filteredRows = objectRows.filter((row) =>
-    Object.entries(row).some(([field, value]) => {
-      if (field === 'key') {
-        const lastSegment = value.split('/').pop();
-        return lastSegment.toLowerCase().includes(searchObjectText.toLowerCase());
-      } else {
-        return value.toString().toLowerCase().includes(searchObjectText.toLowerCase());
-      }
-    }),
+  // Filter files by name and path
+  const filteredFiles = files.filter(
+    (file) =>
+      file.name.toLowerCase().includes(searchObjectText.toLowerCase()) ||
+      file.path.toLowerCase().includes(searchObjectText.toLowerCase()),
   );
 
-  const filteredPrefixRows = prefixRows.filter((row) => {
-    if (row.prefix) {
-      const lastSegment = row.prefix.slice(0, -1).split('/').pop();
-      return lastSegment && lastSegment.toLowerCase().includes(searchObjectText.toLowerCase());
-    }
-    return false;
-  });
+  // Filter directories by name and path
+  const filteredDirectories = directories.filter(
+    (dir) =>
+      dir.name.toLowerCase().includes(searchObjectText.toLowerCase()) ||
+      dir.path.toLowerCase().includes(searchObjectText.toLowerCase()),
+  );
 
   // Auto-trigger deep search for client-side searches when no matches found
   React.useEffect(() => {
-        if (!bucketName || deepSearchActive) return;
-        if (searchObjectText.length === 0) return; // No search active
-        if (!isTruncated || !nextContinuationToken) return; // No more pages
+    if (!bucketName || deepSearchActive) return;
+    if (searchObjectText.length === 0) return; // No search active
+    if (!isTruncated || !paginationToken) return; // No more pages
 
-        // Check if we have any matches in current data
-        const hasMatches = (filteredRows.length + filteredPrefixRows.length) > 0;
-        if (hasMatches) return; // Already have matches
+    // Check if we have any matches in current data
+    const hasMatches = filteredFiles.length + filteredDirectories.length > 0;
+    if (hasMatches) return; // Already have matches
 
-        // For server search, check if we need to auto-load more pages
-        // This handles cases where server search returns empty first page but might have results later
-        if (serverSearchActive) {
-            // For server search with no results, auto-trigger loading more pages after a delay
-            const timer = setTimeout(() => {
-                if (isTruncated && nextContinuationToken && !isLoadingMore) {
-                    handleLoadMore();
-                }
-            }, 1500); // Slightly longer delay for server search
-
-            return () => clearTimeout(timer);
-        } else {
-            // For client-side search, trigger deep search as before
-            const timer = setTimeout(() => {
-                initiateDeepSearch();
-            }, 1000);
-
-            return () => clearTimeout(timer);
+    // For server search, check if we need to auto-load more pages
+    // This handles cases where server search returns empty first page but might have results later
+    if (serverSearchActive) {
+      // For server search with no results, auto-trigger loading more pages after a delay
+      const timer = setTimeout(() => {
+        if (isTruncated && paginationToken && !isLoadingMore) {
+          handleLoadMore();
         }
-    }, [searchObjectText, filteredRows.length, filteredPrefixRows.length, isTruncated, nextContinuationToken, serverSearchActive, deepSearchActive, bucketName, isLoadingMore]);
+      }, 1500); // Slightly longer delay for server search
 
-  // Navigate when clicking on a prefix
-  const handlePrefixClick = (plainTextPrefix: string) => (event: React.MouseEvent<HTMLButtonElement>) => {
-    setS3Objects(null);
-    setS3Prefixes(null);
-    setDecodedPrefix(plainTextPrefix);
-    setNextContinuationToken(null);
+      return () => clearTimeout(timer);
+    } else {
+      // For client-side search, trigger deep search as before
+      const timer = setTimeout(() => {
+        initiateDeepSearch();
+      }, 1000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [
+    searchObjectText,
+    filteredFiles.length,
+    filteredDirectories.length,
+    isTruncated,
+    paginationToken,
+    serverSearchActive,
+    deepSearchActive,
+    bucketName,
+    isLoadingMore,
+  ]);
+
+  // Navigate when clicking on a path (directory)
+  const handlePathClick = (newPath: string) => (event?: React.MouseEvent<HTMLButtonElement>) => {
+    if (event) event.preventDefault();
+
+    console.log('[handlePathClick] Navigating to path:', newPath);
+
+    // Clear current results
+    setFiles([]);
+    setDirectories([]);
+    setCurrentPath(newPath);
+
+    // Reset pagination
+    setPaginationToken(null);
+    setPaginationOffset(0);
     setIsTruncated(false);
-    setSearchObjectText(''); // Clear search field when navigating to folder
-    navigate(plainTextPrefix !== '' ? `/browse/${bucketName}/${btoa(plainTextPrefix)}` : `/browse/${bucketName}`);
+
+    // Clear search
+    setSearchObjectText('');
+
+    // Navigate
+    navigate(newPath !== '' ? `/browse/${locationId}/${btoa(newPath)}` : `/browse/${locationId}`);
   };
 
   /*
@@ -515,7 +606,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
   // Select all visible items
   const handleSelectAll = (isSelecting: boolean) => {
     if (isSelecting) {
-      setSelectedItems(new Set(filteredRows.map((f) => f.key)));
+      setSelectedItems(new Set(filteredFiles.map((f) => f.path)));
     } else {
       setSelectedItems(new Set());
     }
@@ -540,8 +631,8 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
       return;
     }
 
-    const lastIndex = filteredRows.findIndex((f) => f.key === lastSelected);
-    const currentIndex = filteredRows.findIndex((f) => f.key === path);
+    const lastIndex = filteredFiles.findIndex((f) => f.path === lastSelected);
+    const currentIndex = filteredFiles.findIndex((f) => f.path === path);
 
     if (lastIndex === -1 || currentIndex === -1) return;
 
@@ -550,7 +641,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
 
     const updated = new Set(selectedItems);
     for (let i = start; i <= end; i++) {
-      updated.add(filteredRows[i].key);
+      updated.add(filteredFiles[i].path);
     }
 
     setSelectedItems(updated);
@@ -573,7 +664,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [filteredRows]);
+  }, [filteredFiles]);
 
   // Bulk delete selected items
   const handleDeleteSelected = async () => {
@@ -583,7 +674,16 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
       await Promise.all(Array.from(selectedItems).map((path) => storageService.deleteFile(bucketName!, path)));
 
       // Refresh file list
-      refreshObjects(bucketName!, prefix || '', setDecodedPrefix, setS3Objects, setS3Prefixes, setNextContinuationToken, setIsTruncated, undefined, false, undefined, undefined, abortControllerRef.current || undefined);
+      if (selectedLocation && selectedLocation.available) {
+        await refreshFiles(
+          selectedLocation,
+          path || '',
+          null,
+          false,
+          undefined,
+          abortControllerRef.current || undefined
+        );
+      }
       setSelectedItems(new Set());
 
       Emitter.emit('notification', {
@@ -1027,13 +1127,24 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
         eventSource.close();
         multiFileEventSources.current.delete(fullPath);
         setUploadedFiles((prevUploadedFiles) => {
-          const fileExists = prevUploadedFiles.some((file) => file.path === fullFile.path && file.loadResult === 'success');
+          const fileExists = prevUploadedFiles.some(
+            (file) => file.path === fullFile.path && file.loadResult === 'success',
+          );
           if (!fileExists) {
             return [...prevUploadedFiles, { fileName: fullFile.name, loadResult: 'success', path: fullFile.path }];
           }
           return prevUploadedFiles;
         });
-        refreshObjects(bucketName!, prefix!, setDecodedPrefix, setS3Objects, setS3Prefixes, setNextContinuationToken, setIsTruncated, nextContinuationToken, true, undefined, undefined, abortControllerRef.current || undefined);
+        if (selectedLocation && selectedLocation.available) {
+          refreshFiles(
+            selectedLocation,
+            path!,
+            paginationToken,
+            true,
+            undefined,
+            abortControllerRef.current || undefined
+          );
+        }
       }
     };
 
@@ -1372,54 +1483,79 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
   };
 
   const handleLoadMore = () => {
-        if (!isTruncated || !nextContinuationToken || isLoadingMore || deepSearchActive) return;
-        setIsLoadingMore(true);        refreshObjects(
-            bucketName!,
-            prefix || '',
-            setDecodedPrefix,
-            setS3Objects,
-            setS3Prefixes,
-            setNextContinuationToken,
-            setIsTruncated,
-            nextContinuationToken,
-            true,            serverSearchActive ? { q: searchObjectText, mode: searchMode } : undefined,
-            serverSearchActive ? setFilterMeta : undefined,
+    if (!isTruncated || isLoadingMore || deepSearchActive || !selectedLocation) {
+      return;
+    }
+
+    console.log('[handleLoadMore] Loading more results');
+    setIsLoadingMore(true);
+
+    if (selectedLocation.type === 's3') {
+      // S3: Use continuation token
+      refreshFiles(
+        selectedLocation,
+        currentPath,
+        paginationToken,
+        true, // append results
+        serverSearchActive ? { q: searchObjectText, mode: searchMode } : undefined,
+        abortControllerRef.current || undefined
+      )
+        .finally(() => setIsLoadingMore(false));
+
+    } else {
+      // Local: Use offset (already tracked in state)
+      refreshFiles(
+        selectedLocation,
+        currentPath,
+        null,
+        true, // append results
+        undefined,
+        abortControllerRef.current || undefined
+      )
+        .finally(() => setIsLoadingMore(false));
+    }
+  };
+
+  // Deep search: auto paginate until we find matches for current searchObjectText (or exhaust pages)
+  const initiateDeepSearch = async () => {
+    if (serverSearchActive) return; // server handled; disable client deep search
+    if (deepSearchActive || !isTruncated || !paginationToken) return;
+    setDeepSearchActive(true);
+    setDeepSearchPagesScanned(0);
+    setDeepSearchCancelled(false);
+    try {
+      let pages = 0;
+      // Loop while more pages and still no matches and not cancelled
+      // Recompute filtered arrays after each append; rely on derived variables after state settles
+      while (!deepSearchCancelled) {
+        // Re-evaluate current matches
+        const haveMatches = filteredFiles.length + filteredDirectories.length > 0;
+        if (haveMatches) break;
+        if (!isTruncated || !paginationToken) break;
+        if (selectedLocation && selectedLocation.available) {
+          await refreshFiles(
+            selectedLocation,
+            path || '',
+            paginationToken,
+            true,
+            undefined,
             abortControllerRef.current || undefined
-        )
-            .then(() => { setIsLoadingMore(false); })
-            .catch(() => { setIsLoadingMore(false); });
-    };
-
-    // Deep search: auto paginate until we find matches for current searchObjectText (or exhaust pages)
-    const initiateDeepSearch = async () => {
-        if (serverSearchActive) return; // server handled; disable client deep search
-        if (deepSearchActive || !isTruncated || !nextContinuationToken) return;
-        setDeepSearchActive(true);
-        setDeepSearchPagesScanned(0);
-        setDeepSearchCancelled(false);
-        try {
-            let pages = 0;
-            // Loop while more pages and still no matches and not cancelled
-            // Recompute filtered arrays after each append; rely on derived variables after state settles
-            while (!deepSearchCancelled) {
-                // Re-evaluate current matches
-                const haveMatches = (filteredRows.length + filteredPrefixRows.length) > 0;
-                if (haveMatches) break;                if (!isTruncated || !nextContinuationToken) break;
-                await refreshObjects(bucketName!, prefix || '', setDecodedPrefix, setS3Objects, setS3Prefixes, setNextContinuationToken, setIsTruncated, nextContinuationToken, true, undefined, undefined, abortControllerRef.current || undefined);
-                pages += 1;
-                setDeepSearchPagesScanned(pages);
-                // Yield to allow state/filteredRows to update
-                await new Promise(r => setTimeout(r, 10));
-            }
-        } finally {
-            setDeepSearchActive(false);
+          );
         }
-    };
+        pages += 1;
+        setDeepSearchPagesScanned(pages);
+        // Yield to allow state to update
+        await new Promise((r) => setTimeout(r, 10));
+      }
+    } finally {
+      setDeepSearchActive(false);
+    }
+  };
 
-    const cancelDeepSearch = () => {
-        setDeepSearchCancelled(true);
-        setDeepSearchActive(false);
-    };
+  const cancelDeepSearch = () => {
+    setDeepSearchCancelled(true);
+    setDeepSearchActive(false);
+  };
 
   return (
     <div>
@@ -1442,27 +1578,16 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                   onChange={handleLocationSelectorChange}
                 >
                   {locations.length === 0 && (
-                    <FormSelectOption
-                      key="loading"
-                      value=""
-                      label="Loading locations..."
-                      isDisabled
-                    />
+                    <FormSelectOption key="loading" value="" label="Loading locations..." isDisabled />
                   )}
 
                   {locations.map((loc) => {
-                    const label = loc.type === 's3'
-                      ? `${loc.name} (S3)`
-                      : `${loc.name} (Local${!loc.available ? ' - Unavailable' : ''})`;
+                    const label =
+                      loc.type === 's3'
+                        ? `${loc.name} (S3)`
+                        : `${loc.name} (Local${!loc.available ? ' - Unavailable' : ''})`;
 
-                    return (
-                      <FormSelectOption
-                        key={loc.id}
-                        value={loc.id}
-                        label={label}
-                        isDisabled={!loc.available}
-                      />
-                    );
+                    return <FormSelectOption key={loc.id} value={loc.id} label={label} isDisabled={!loc.available} />;
                   })}
                 </FormSelect>
               </FlexItem>
@@ -1505,10 +1630,10 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                 <Button
                   variant="link"
                   className="breadcrumb-button"
-                  onClick={handlePrefixClick('')}
+                  onClick={handlePathClick('')}
                   aria-label="bucket-name"
                 >
-                  {bucketName === ':bucketName' ? bucketsList?.buckets?.[0]?.Name : bucketName}
+                  {bucketName}
                 </Button>
               </BreadcrumbItem>
               {decodedPrefix
@@ -1519,7 +1644,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                     <Button
                       variant="link"
                       className="breadcrumb-button"
-                      onClick={handlePrefixClick(
+                      onClick={handlePathClick(
                         decodedPrefix
                           .slice(0, -1)
                           .split('/')
@@ -1655,7 +1780,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                     <Th
                       select={{
                         onSelect: (_event, isSelecting) => handleSelectAll(isSelecting),
-                        isSelected: selectedItems.size === filteredRows.length && filteredRows.length > 0,
+                        isSelected: selectedItems.size === filteredFiles.length && filteredFiles.length > 0,
                       }}
                     />
                     <Th width={30}>{columnNames.key}</Th>
@@ -1665,66 +1790,56 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                   </Tr>
                 </Thead>
                 <Tbody>
-                  {filteredPrefixRows.map((row, rowIndex) => (
-                    <Tr key={rowIndex} className="bucket-row">
+                  {filteredDirectories.map((dir, rowIndex) => (
+                    <Tr key={dir.path} className="bucket-row">
                       <Td />
                       <Td className="bucket-column">
-                        <Button variant="link" onClick={handlePrefixClick(row.prefix)} className="button-folder-link">
+                        <Button variant="link" onClick={handlePathClick(dir.path)} className="button-folder-link">
                           <FontAwesomeIcon icon={faFolder} className="folder-icon" />
-                          {row.prefix.slice(0, -1).split('/').pop()}
+                          {dir.name}
                         </Button>
                       </Td>
-                      <Td className="bucket-column"></Td>
-                      <Td className="bucket-column"></Td>
+                      <Td className="bucket-column">{dir.modified ? new Date(dir.modified).toLocaleString() : '-'}</Td>
+                      <Td className="bucket-column">-</Td>
                       <Td className="bucket-column align-right">
-                        <ToolbarContent>
-                          <ToolbarGroup
-                            variant="action-group-plain"
-                            align={{ default: 'alignEnd' }}
-                            gap={{ default: 'gapMd', md: 'gapMd' }}
-                          >
-                            <ToolbarItem>
-                              <Tooltip content={<div>Delete this folder.</div>}>
-                                <Button
-                                  variant="danger"
-                                  className="button-file-control"
-                                  onClick={handleDeleteFolderClick(row.prefix)}
-                                >
-                                  <FontAwesomeIcon icon={faTrash} />
-                                </Button>
-                              </Tooltip>
-                            </ToolbarItem>
-                          </ToolbarGroup>
-                        </ToolbarContent>
+                        <Button
+                          variant="danger"
+                          className="button-file-control"
+                          onClick={handleDeleteFolderClick(dir.path)}
+                        >
+                          <FontAwesomeIcon icon={faTrash} />
+                        </Button>
                       </Td>
                     </Tr>
                   ))}
                 </Tbody>
                 <Tbody>
-                  {filteredRows.map((row, rowIndex) => (
+                  {filteredFiles.map((file, rowIndex) => (
                     <Tr
-                      key={rowIndex}
+                      key={file.path}
                       className="bucket-row"
-                      isRowSelected={selectedItems.has(row.key)}
+                      isRowSelected={selectedItems.has(file.path)}
                       onRowClick={(event) => {
                         if (event?.shiftKey) {
-                          handleShiftClick(row.key);
+                          handleShiftClick(file.path);
                         }
                       }}
                     >
                       <Td
                         select={{
                           rowIndex: rowIndex,
-                          onSelect: (_event, isSelecting) => handleSelectRow(row.key, isSelecting),
-                          isSelected: selectedItems.has(row.key),
+                          onSelect: (_event, isSelecting) => handleSelectRow(file.path, isSelecting),
+                          isSelected: selectedItems.has(file.path),
                         }}
                       />
                       <Td className="bucket-column">
                         <FontAwesomeIcon icon={faFile} className="file-icon" />
-                        {row.key.split('/').pop()}
+                        {file.name}
                       </Td>
-                      <Td className="bucket-column">{row.lastModified}</Td>
-                      <Td className="bucket-column">{row.size}</Td>
+                      <Td className="bucket-column">
+                        {file.modified ? new Date(file.modified).toLocaleString() : '-'}
+                      </Td>
+                      <Td className="bucket-column">{file.size ? formatBytes(file.size) : '-'}</Td>
                       <Td className="bucket-column align-right">
                         <ToolbarContent>
                           <ToolbarGroup
@@ -1737,8 +1852,8 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                                 <Button
                                   variant="primary"
                                   className="button-file-control"
-                                  isDisabled={!validateFileView(row.key.split('/').pop() || '', row.originalSize)}
-                                  onClick={handleObjectViewClick(row.key)}
+                                  isDisabled={!validateFileView(file.name, file.size || 0)}
+                                  onClick={handleObjectViewClick(file.path)}
                                 >
                                   <FontAwesomeIcon icon={faEye} />
                                 </Button>
@@ -1750,8 +1865,8 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                                   component="a"
                                   variant="primary"
                                   className="button-file-control"
-                                  download={row.key.split('/').pop()}
-                                  href={`${config.backend_api_url}/objects/download/${bucketName}/${btoa(row.key)}`}
+                                  download={file.name}
+                                  href={`${config.backend_api_url}/objects/download/${bucketName}/${btoa(file.path)}`}
                                 >
                                   <FontAwesomeIcon icon={faDownload} />
                                 </Button>
@@ -1763,7 +1878,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                                 <Button
                                   variant="danger"
                                   className="button-file-control"
-                                  onClick={handleDeleteFileClick(row.key)}
+                                  onClick={handleDeleteFileClick(file.path)}
                                 >
                                   <FontAwesomeIcon icon={faTrash} />
                                 </Button>
@@ -1787,7 +1902,9 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
                     isDisabled={isLoadingMore || deepSearchActive}
                     ouiaId="LoadMore"
                   >
-                    {isLoadingMore ? 'Loading…' : `Load more (${nextContinuationToken ? 'more available' : 'last page'})`}
+                    {isLoadingMore
+                      ? 'Loading…'
+                      : `Load more (${paginationToken ? 'more available' : 'last page'})`}
                   </Button>
                 </FlexItem>
               </Flex>
@@ -1821,7 +1938,8 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
               <Flex direction={{ default: 'column' }} style={{ marginTop: 'var(--pf-t--global--spacer--md)' }}>
                 <FlexItem>
                   <Content component={ContentVariants.p}>
-                    Client-side filtering active. Results may be incomplete. Deep search will auto-trigger if no matches found.
+                    Client-side filtering active. Results may be incomplete. Deep search will auto-trigger if no matches
+                    found.
                   </Content>
                 </FlexItem>
               </Flex>
@@ -2200,13 +2318,22 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
         onClose={() => {
           setIsTransferModalOpen(false);
           // Refresh file list after transfer completes
-          refreshObjects(bucketName!, prefix || '', setDecodedPrefix, setS3Objects, setS3Prefixes, setNextContinuationToken, setIsTruncated, undefined, false, undefined, undefined, abortControllerRef.current || undefined);
+          if (selectedLocation && selectedLocation.available) {
+            refreshFiles(
+              selectedLocation,
+              path || '',
+              null,
+              false,
+              undefined,
+              abortControllerRef.current || undefined
+            );
+          }
           // Clear selection
           setSelectedItems(new Set());
         }}
         sourceLocationId={bucketName!}
-        sourceType="s3"
-        sourcePath={decodedPrefix}
+        sourceType={selectedLocation?.type || 's3'}
+        sourcePath={currentPath}
         selectedFiles={Array.from(selectedItems)}
       />
     </div>
