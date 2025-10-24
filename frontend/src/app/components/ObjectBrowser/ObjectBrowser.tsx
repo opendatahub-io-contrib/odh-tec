@@ -135,6 +135,11 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
   const [formSelectBucket, setFormSelectBucket] = React.useState(bucketName);
   const [textInputBucket, setTextInputBucket] = React.useState(bucketName === ':bucketName' ? '' : bucketName);
 
+  // Unified storage locations (S3 + local)
+  const [locations, setLocations] = React.useState<StorageLocation[]>([]);
+  const [selectedLocation, setSelectedLocation] = React.useState<StorageLocation | null>(null);
+  const [formSelectLocation, setFormSelectLocation] = React.useState(locationId || '');
+
     // Insert server search states early to avoid use-before-declaration
     const [searchObjectText, setSearchObjectText] = React.useState('');
     const [searchMode, setSearchMode] = React.useState<'startsWith' | 'contains'>('contains');
@@ -168,6 +173,78 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
       });
     }
   }, [location]);
+
+  // Load all storage locations (S3 + local) on mount
+  React.useEffect(() => {
+    storageService.getLocations()
+      .then((allLocations) => {
+        console.log('[ObjectBrowser] Loaded locations:', allLocations);
+        setLocations(allLocations);
+      })
+      .catch((error) => {
+        console.error('[ObjectBrowser] Failed to load storage locations:', error);
+        Emitter.emit('notification', {
+          variant: 'warning',
+          title: 'Error Loading Locations',
+          description: 'Failed to load storage locations. Please check your connection settings.',
+        });
+      });
+  }, []); // Empty dependency array - run only on mount
+
+  // Set selected location based on URL parameter
+  React.useEffect(() => {
+    if (!locationId) {
+      // No location selected - redirect to first available
+      if (locations.length > 0) {
+        const firstAvailable = locations.find(loc => loc.available) || locations[0];
+        console.log('[ObjectBrowser] No location in URL, redirecting to:', firstAvailable.id);
+        navigate(`/browse/${firstAvailable.id}`);
+      }
+      return;
+    }
+
+    if (locations.length === 0) {
+      // Locations not loaded yet
+      return;
+    }
+
+    // Find location by ID
+    const location = locations.find(loc => loc.id === locationId);
+
+    if (!location) {
+      // Location not found
+      console.error('[ObjectBrowser] Location not found:', locationId);
+      Emitter.emit('notification', {
+        variant: 'warning',
+        title: 'Location Not Found',
+        description: `Storage location "${locationId}" does not exist.`,
+      });
+      // Redirect to first available location
+      const firstAvailable = locations.find(loc => loc.available) || locations[0];
+      if (firstAvailable) {
+        navigate(`/browse/${firstAvailable.id}`);
+      } else {
+        navigate('/browse');
+      }
+      return;
+    }
+
+    if (!location.available) {
+      // Location exists but is unavailable
+      console.warn('[ObjectBrowser] Location unavailable:', locationId);
+      Emitter.emit('notification', {
+        variant: 'warning',
+        title: 'Location Unavailable',
+        description: `Storage location "${location.name}" is currently unavailable. It may be disconnected or inaccessible.`,
+      });
+    }
+
+    // Set selected location
+    console.log('[ObjectBrowser] Selected location:', location);
+    setSelectedLocation(location);
+    setFormSelectLocation(locationId);
+
+  }, [locationId, locations, navigate]);
 
   // Refresh objects from the bucket when location changes
   React.useEffect(() => {
@@ -207,9 +284,54 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
     navigate(`/browse/${value}`);
   };
 
+  // Handle location change in the dropdown
+  const handleLocationSelectorChange = (_event: React.FormEvent<HTMLSelectElement>, value: string) => {
+    console.log('[ObjectBrowser] Location selector changed to:', value);
+
+    // Find the selected location
+    const newLocation = locations.find(loc => loc.id === value);
+
+    if (!newLocation) {
+      console.error('[ObjectBrowser] Selected location not found:', value);
+      return;
+    }
+
+    if (!newLocation.available) {
+      console.warn('[ObjectBrowser] Attempted to select unavailable location:', value);
+      Emitter.emit('notification', {
+        variant: 'warning',
+        title: 'Location Unavailable',
+        description: `Cannot select "${newLocation.name}" as it is currently unavailable.`,
+      });
+      return;
+    }
+
+    // Navigate to the new location (root path)
+    setFormSelectLocation(value);
+    setSearchObjectText(''); // Clear search field when switching locations
+    navigate(`/browse/${value}`);
+  };
+
   const handleBucketTextInputSend = (_event: React.MouseEvent<HTMLButtonElement>) => {
     setSearchObjectText(''); // Clear search field when navigating to different bucket
     navigate(`/browse/${textInputBucket}`);
+  };
+
+  const handleLocationTextInputSend = (_event: React.MouseEvent<HTMLButtonElement>) => {
+    // Validate location exists
+    const location = locations.find(loc => loc.id === formSelectLocation);
+
+    if (!location) {
+      Emitter.emit('notification', {
+        variant: 'warning',
+        title: 'Invalid Location',
+        description: `Location "${formSelectLocation}" does not exist.`,
+      });
+      return;
+    }
+
+    setSearchObjectText(''); // Clear search field when navigating to different location
+    navigate(`/browse/${formSelectLocation}`);
   };
 
   /*
@@ -1102,8 +1224,7 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
   const [localLocationId, setLocalLocationId] = React.useState('');
   const [localPath, setLocalPath] = React.useState('');
 
-  // Load locations for destination selector
-  const [locations, setLocations] = React.useState<StorageLocation[]>([]);
+  // Note: Using shared 'locations' state from above (line ~139) for destination selector
 
   const handleImportModelModalToggle = (_event: KeyboardEvent | React.MouseEvent) => {
     setIsImportModelModalOpen(!isImportModelModalOpen);
@@ -1303,26 +1424,46 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
   return (
     <div>
       <PageSection hasBodyWrapper={false}>
-        <Content component={ContentVariants.h1}>S3 Objects Browser</Content>
+        <Content component={ContentVariants.h1}>Storage Browser</Content>
       </PageSection>
       <PageSection hasBodyWrapper={false} isFilled={true} className="object-browser-page-section">
         <Flex direction={{ default: 'row' }}>
           <FlexItem>
             <Flex>
               <FlexItem>
-                <Content component={ContentVariants.p}>Bucket Selection:</Content>
+                <Content component={ContentVariants.p}>Storage Location:</Content>
               </FlexItem>
               <FlexItem>
                 <FormSelect
                   className="bucket-select"
-                  value={formSelectBucket}
-                  aria-label="FormSelect Input"
+                  value={formSelectLocation}
+                  aria-label="Select storage location"
                   ouiaId="BasicFormSelect"
-                  onChange={handleBucketSelectorChange}
+                  onChange={handleLocationSelectorChange}
                 >
-                  {bucketsList?.buckets.map((bucket) => (
-                    <FormSelectOption key={bucket.Name} value={bucket.Name} label={bucket.Name} />
-                  ))}
+                  {locations.length === 0 && (
+                    <FormSelectOption
+                      key="loading"
+                      value=""
+                      label="Loading locations..."
+                      isDisabled
+                    />
+                  )}
+
+                  {locations.map((loc) => {
+                    const label = loc.type === 's3'
+                      ? `${loc.name} (S3)`
+                      : `${loc.name} (Local${!loc.available ? ' - Unavailable' : ''})`;
+
+                    return (
+                      <FormSelectOption
+                        key={loc.id}
+                        value={loc.id}
+                        label={label}
+                        isDisabled={!loc.available}
+                      />
+                    );
+                  })}
                 </FormSelect>
               </FlexItem>
             </Flex>
@@ -1330,26 +1471,26 @@ const ObjectBrowser: React.FC<ObjectBrowserProps> = () => {
           <FlexItem>
             <Flex>
               <FlexItem>
-                <Content component={ContentVariants.p}>Bucket override:</Content>
+                <Content component={ContentVariants.p}>Location override:</Content>
               </FlexItem>
               <FlexItem>
                 <TextInput
-                  value={textInputBucket}
-                  onChange={(_event, textInputBucket) => setTextInputBucket(textInputBucket)}
+                  value={formSelectLocation}
+                  onChange={(_event, value) => setFormSelectLocation(value)}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter') {
-                      handleBucketTextInputSend(event as unknown as React.MouseEvent<HTMLButtonElement>);
+                      handleLocationTextInputSend(event as unknown as React.MouseEvent<HTMLButtonElement>);
                     }
                   }}
                   type="search"
                   aria-label="search text input"
-                  placeholder="Filter objects..."
+                  placeholder="Enter location ID..."
                   className="buckets-list-filter-search"
                 />
               </FlexItem>
               <FlexItem>
-                <Button variant="secondary" onClick={handleBucketTextInputSend} ouiaId="RefreshBucket">
-                  Set bucket
+                <Button variant="secondary" onClick={handleLocationTextInputSend} ouiaId="RefreshBucket">
+                  Set location
                 </Button>
               </FlexItem>
             </Flex>
