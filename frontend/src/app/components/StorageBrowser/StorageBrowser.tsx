@@ -492,7 +492,8 @@ const StorageBrowser: React.FC<StorageBrowserProps> = () => {
       serverSearchActive ? { q: searchObjectText, mode: searchMode } : undefined,
       abortControllerRef.current || undefined,
     );
-  }, [selectedLocation, path, refreshFiles]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedLocation, path]);
 
   React.useEffect(() => {
     // On short searches (<3) just local filter; if we were previously server searching, reload unfiltered list.
