@@ -523,6 +523,10 @@ export default async (fastify: FastifyInstance): Promise<void> => {
     }
   };
 
+  // List objects routes
+  // Note: bucketName does NOT need decodeURIComponent - it's validated to URL-safe [a-z0-9-]
+  // (see validateBucketName in utils/validation.ts). Fastify auto-decodes URL params anyway.
+  // Prefix IS base64-encoded and is decoded within handleListRequest via validateAndDecodePrefix.
   fastify.get('/:bucketName', async (req: FastifyRequest, reply: FastifyReply) => {
     const { bucketName } = req.params as any;
     await handleListRequest(req, reply, bucketName, undefined);

@@ -158,8 +158,24 @@ Main components in `src/app/components/`:
 
 - React Router v7 for navigation
 - Routes defined in `src/app/routes.tsx`
-- Main routes: `/objects/:bucketName/:prefix?` (default), `/buckets`, `/gpu/vram-estimator`, `/settings`
+- Main routes: `/browse/:locationId?/:path?` (Storage Browser), `/buckets`, `/gpu/vram-estimator`, `/settings`
 - No protected routes (no authentication)
+
+### URL Encoding Strategy
+
+The application uses **intentionally different encoding strategies** for URL parameters:
+
+**LocationId (NOT encoded)**:
+- S3 bucket names: Validated to URL-safe `[a-z0-9-]` (see `backend/src/utils/validation.ts`)
+- PVC locations: Use pattern `local-0`, `local-1` (always URL-safe)
+- Benefit: Human-readable URLs like `/browse/my-bucket`
+
+**Path (Base64-encoded)**:
+- Contains slashes, spaces, special characters
+- Example: `models/llama/config.json` → `bW9kZWxzL2xsYW1hL2NvbmZpZy5qc29u`
+- Benefit: Handles all characters without URL encoding issues
+
+**For full details**, see [Frontend Architecture - URL Encoding Strategy](../docs/architecture/frontend-architecture.md#url-encoding-strategy).
 
 ## 🔌 API Integration
 

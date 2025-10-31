@@ -203,7 +203,7 @@ sourceLocationId={locationId!}
 
 ```typescript
 // BEFORE
-`${config.backend_api_url}/objects/upload-progress/${btoa(decodedPrefix + singleFilename)}`// AFTER
+`${config.backend_api_url}/objects/upload-progress/${btoa(decodedPrefix + singleFilename)}` // AFTER
 `${config.backend_api_url}/objects/upload-progress/${btoa(currentPath + singleFilename)}`;
 ```
 
@@ -211,7 +211,7 @@ sourceLocationId={locationId!}
 
 ```typescript
 // BEFORE
-`${config.backend_api_url}/objects/upload/${bucketName}/${btoa(decodedPrefix + singleFilename)}`// AFTER
+`${config.backend_api_url}/objects/upload/${bucketName}/${btoa(decodedPrefix + singleFilename)}` // AFTER
 `${config.backend_api_url}/objects/upload/${locationId}/${btoa(currentPath + singleFilename)}`;
 ```
 

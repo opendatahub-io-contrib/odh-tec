@@ -136,15 +136,20 @@ const StorageBrowser: React.FC<StorageBrowserProps> = () => {
       });
   }, []);
 
-  // URL parameters
+  // URL parameters from /browse/:locationId/:path?
+  //
+  // ENCODING STRATEGY (see docs/architecture/frontend-architecture.md):
+  // - locationId: NOT encoded (validated to URL-safe [a-z0-9-] on backend)
+  // - path: Base64-encoded (can contain slashes, spaces, special chars)
   const { locationId, path: encodedPath } = useParams<{
     locationId?: string;
     path?: string;
   }>();
 
   // Decode base64-encoded path from URL
-  // Path is base64-encoded in URL to handle slashes and special characters
-  // storageService will re-encode it for local storage API calls
+  // Path is base64-encoded in URL to handle slashes and special characters safely
+  // Note: locationId is NOT decoded - it's already URL-safe by validation
+  // storageService will re-encode paths for local storage API calls
   const path = React.useMemo(() => {
     if (!encodedPath) return '';
     try {

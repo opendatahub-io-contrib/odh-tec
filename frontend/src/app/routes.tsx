@@ -35,6 +35,19 @@ const routes: AppRouteConfig[] = [
       {
         element: <StorageBrowser />,
         label: 'Storage Browser',
+        // URL Pattern: /browse/:locationId/:path?
+        //
+        // ENCODING STRATEGY:
+        // - locationId: NOT encoded (URL-safe by validation)
+        //   - S3 buckets: Validated to [a-z0-9-] pattern (see backend/src/utils/validation.ts)
+        //   - Local storage: Uses 'local-N' pattern (always URL-safe)
+        //   - Benefit: Human-readable URLs like /browse/my-bucket
+        //
+        // - path: Base64-encoded (can contain special characters)
+        //   - Example: "models/llama/config.json" → "bW9kZWxzL2xsYW1hL2NvbmZpZy5qc29u"
+        //   - Benefit: Handles slashes, spaces, unicode without URL encoding issues
+        //
+        // See docs/architecture/frontend-architecture.md for full explanation
         path: '/browse/:locationId?/:path?',
         navPath: '/browse',
         title: 'Storage Browser',

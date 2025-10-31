@@ -90,6 +90,20 @@ Static files served from `frontend/dist/` via `@fastify/static` in production.
 
 **For detailed route documentation**, see [Backend Architecture](../docs/architecture/backend-architecture.md).
 
+### URL Parameter Handling
+
+**Bucket Names (NOT encoded)**:
+- Validated to URL-safe `[a-z0-9-]` via `validateBucketName()` in `src/utils/validation.ts`
+- Fastify automatically decodes URL parameters, but no decoding is needed
+- This validation enables human-readable frontend URLs like `/browse/my-bucket`
+
+**Object Keys and Paths (Base64-encoded)**:
+- Decoded using `validateAndDecodePrefix()` in `src/utils/validation.ts`
+- Handles slashes, spaces, and special characters safely
+- Prevents path traversal attacks (`..\..` sequences rejected after decoding)
+
+**Rationale**: By strictly validating bucket names to URL-safe characters, we avoid the need for URL encoding while maintaining security. This architectural decision provides human-readable URLs and is consistent with the frontend's locationId abstraction pattern.
+
 ## Key Implementation Guidelines
 
 ### For AI Assistants

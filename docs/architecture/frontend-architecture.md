@@ -378,6 +378,67 @@ const encodedPrefix = btoa(prefix);
 navigate(`/objects/${bucketName}/${encodedPrefix}`);
 ```
 
+### URL Encoding Strategy
+
+The application uses **different encoding strategies for different URL parameters** to balance readability, safety, and functionality.
+
+#### Pattern: `/browse/:locationId/:path?`
+
+**LocationId (NOT encoded)**:
+
+- **S3 buckets**: Validated to contain only `[a-z0-9-]` (URL-safe by design)
+- **Local storage**: Uses pattern `local-0`, `local-1`, etc. (always URL-safe)
+- **Rationale**:
+  - Human-readable URLs: `/browse/my-bucket` vs `/browse/my%2Dbucket`
+  - Quick visual identification of storage location
+  - Consistent with locationId abstraction pattern
+  - Validation ensures these are always URL-safe (see `backend/src/utils/validation.ts`)
+
+**Path (Base64-encoded)**:
+
+- **Can contain**: Slashes, spaces, unicode, special characters
+- **Encoding**: Base64 (e.g., `models/llama/config.json` → `bW9kZWxzL2xsYW1hL2NvbmZpZy5qc29u`)
+- **Rationale**:
+  - Preserves original path structure including slashes
+  - Handles all possible characters without URL encoding issues
+  - No ambiguity with route parameter delimiters
+
+**Example URLs**:
+
+```
+// Root of bucket
+/browse/my-bucket
+
+// Path within bucket
+/browse/my-bucket/bW9kZWxzL2xsYW1hL2NvbmZpZy5qc29u
+(Decodes to: models/llama/config.json)
+
+// PVC local storage
+/browse/local-0/ZGF0YXNldHMvdHJhaW5pbmcvZGF0YS5jc3Y
+(Decodes to: datasets/training/data.csv)
+```
+
+**Implementation**:
+
+```typescript
+// Encoding a path for navigation
+const encodedPath = btoa('models/llama/config.json');
+navigate(`/browse/${locationId}/${encodedPath}`);
+
+// Decoding path from URL
+const { locationId, path: encodedPath } = useParams();
+const decodedPath = encodedPath ? atob(encodedPath) : '';
+```
+
+**Why NOT encode locationIds?**
+
+1. S3 bucket names are strictly validated to URL-safe characters
+2. Local storage IDs use the safe pattern `local-N`
+3. Human readability is valuable for URLs
+4. Consistent with the abstraction pattern (friendly IDs for all storage types)
+
+**Security Note**: The backend validates bucket names against AWS S3 naming rules (`validateBucketName()` in `backend/src/utils/validation.ts`), ensuring only URL-safe characters are accepted. This architectural decision relies on validation being properly enforced.
+
 ## State Management
 
 ### Local State (useState)

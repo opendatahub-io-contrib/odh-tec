@@ -16,6 +16,12 @@
  * - Cannot be formatted as an IP address
  * - Cannot start with 'xn--' (reserved for internationalized domain names)
  *
+ * URL SAFETY NOTE:
+ * This validation ensures bucket names contain only URL-safe characters [a-z0-9-].
+ * This is why bucket names do NOT need URL encoding in frontend routes like
+ * /browse/:bucketName - they are guaranteed to be URL-safe.
+ * Contrast with paths which may contain slashes and special chars, thus requiring base64 encoding.
+ *
  * @param bucketName - Bucket name to validate
  * @returns null if valid, error message string if invalid
  */
