@@ -12,7 +12,6 @@ import {
   DataListCell,
   Radio,
   Button,
-  ActionGroup,
 } from '@patternfly/react-core';
 import * as React from 'react';
 import { TransferConflict } from '@app/services/storageService';
@@ -65,7 +64,20 @@ export const ConflictResolutionModal: React.FC<ConflictResolutionModalProps> = (
   };
 
   return (
-    <Modal title="File Conflicts Detected" isOpen={isOpen} onClose={onCancel} variant="medium">
+    <Modal
+      title="File Conflicts Detected"
+      isOpen={isOpen}
+      onClose={onCancel}
+      variant="medium"
+      actions={[
+        <Button key="proceed" variant="primary" onClick={handleResolve}>
+          Proceed with Transfer
+        </Button>,
+        <Button key="cancel" variant="link" onClick={onCancel}>
+          Cancel
+        </Button>,
+      ]}
+    >
       <Alert variant="warning" title={`${conflicts.length} file(s) already exist`} isInline />
 
       <DataList aria-label="Conflict list">
@@ -140,15 +152,6 @@ export const ConflictResolutionModal: React.FC<ConflictResolutionModalProps> = (
           <FormSelectOption value="rename" label="Rename all" />
         </FormSelect>
       </FormGroup>
-
-      <ActionGroup>
-        <Button variant="primary" onClick={handleResolve}>
-          Proceed with Transfer
-        </Button>
-        <Button variant="link" onClick={onCancel}>
-          Cancel
-        </Button>
-      </ActionGroup>
     </Modal>
   );
 };

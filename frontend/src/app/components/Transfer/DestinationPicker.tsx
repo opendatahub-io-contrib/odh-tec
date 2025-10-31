@@ -12,7 +12,6 @@ import {
   DataListItemCells,
   DataListCell,
   Button,
-  ActionGroup,
 } from '@patternfly/react-core';
 import { FolderIcon, PlusIcon } from '@patternfly/react-icons';
 import * as React from 'react';
@@ -134,7 +133,25 @@ export const DestinationPicker: React.FC<DestinationPickerProps> = ({
   };
 
   return (
-    <Modal title="Select Destination" isOpen={isOpen} onClose={onCancel} variant="large">
+    <Modal
+      title="Select Destination"
+      isOpen={isOpen}
+      onClose={onCancel}
+      variant="large"
+      actions={[
+        <Button
+          key="select"
+          variant="primary"
+          onClick={() => onSelect(selectedLocation, currentPath)}
+          isDisabled={!selectedLocation}
+        >
+          Select Destination
+        </Button>,
+        <Button key="cancel" variant="link" onClick={onCancel}>
+          Cancel
+        </Button>,
+      ]}
+    >
       <Form>
         <FormGroup label="Storage Location" isRequired>
           <FormSelect
@@ -194,19 +211,6 @@ export const DestinationPicker: React.FC<DestinationPickerProps> = ({
           </>
         )}
       </Form>
-
-      <ActionGroup>
-        <Button
-          variant="primary"
-          onClick={() => onSelect(selectedLocation, currentPath)}
-          isDisabled={!selectedLocation}
-        >
-          Select Destination
-        </Button>
-        <Button variant="link" onClick={onCancel}>
-          Cancel
-        </Button>
-      </ActionGroup>
     </Modal>
   );
 };
