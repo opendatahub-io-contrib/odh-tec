@@ -179,6 +179,7 @@ const SettingsManagement: React.FunctionComponent<SettingsProps> = () => {
     /* Max Concurrent Transfers Management */
 
     const [maxConcurrentTransfers, setMaxConcurrentTransfers] = React.useState<number>(0);
+    const [maxFilesPerPage, setMaxFilesPerPage] = React.useState<number>(100);
 
     React.useEffect(() => {
         axios.get(`${config.backend_api_url}/settings/max-concurrent-transfers`)
@@ -194,9 +195,35 @@ const SettingsManagement: React.FunctionComponent<SettingsProps> = () => {
             });
     }, []);
 
+    React.useEffect(() => {
+        axios.get(`${config.backend_api_url}/settings/max-files-per-page`)
+            .then((response) => {
+                const { maxFilesPerPage } = response.data;
+                if (maxFilesPerPage !== undefined) {
+                    setMaxFilesPerPage(maxFilesPerPage);
+                }
+            })
+            .catch((error) => {
+                console.error(error);
+                Emitter.emit('error', `Failed to fetch Max Files Per Page settings: ${error.response?.data?.error ? `${error.response.data.error} - ` : ''}${error.response?.data?.message || 'Server error'}`);
+            });
+    }, []);
+
     const handleSaveMaxConcurrentTransfers = (event) => {
         event.preventDefault();
         axios.put(`${config.backend_api_url}/settings/max-concurrent-transfers`, { maxConcurrentTransfers })
+            .then((response) => {
+                Emitter.emit('notification', { variant: 'success', title: '', description: 'Settings saved successfully!' });
+            })
+            .catch((error) => {
+                console.error(error);
+                Emitter.emit('notification', { variant: 'warning', title: error.response?.data?.error || 'Save Failed', description: error.response?.data?.message || 'An unknown error occurred' });
+            });
+    };
+
+    const handleSaveMaxFilesPerPage = (event) => {
+        event.preventDefault();
+        axios.put(`${config.backend_api_url}/settings/max-files-per-page`, { maxFilesPerPage })
             .then((response) => {
                 Emitter.emit('notification', { variant: 'success', title: '', description: 'Settings saved successfully!' });
             })
@@ -426,6 +453,32 @@ const SettingsManagement: React.FunctionComponent<SettingsProps> = () => {
                         </Form>
                     </Tab>
                     <Tab eventKey={3}
+                        title={
+                            <>
+                                <TabTitleIcon>
+                                    <FontAwesomeIcon icon={faBucket} />
+                                </TabTitleIcon>{' '}
+                                <TabTitleText>Max Files Per Page</TabTitleText>{' '}
+                            </>
+                        }
+                        aria-label="Max files per page">
+                        <Form onSubmit={handleSaveMaxFilesPerPage}
+                            className='settings-form'>
+                            <FormGroup label={"Max Files Per Page: " + maxFilesPerPage} fieldId="maxFilesPerPage">
+                                <Slider
+                                    hasTooltipOverThumb={false}
+                                    value={maxFilesPerPage}
+                                    min={10}
+                                    max={1000}
+                                    step={10}
+                                    className='form-settings-slider'
+                                    onChange={(_event: SliderOnChangeEvent, value: number) => setMaxFilesPerPage(value)}
+                                />
+                            </FormGroup>
+                            <Button type="submit" className='form-settings-submit'>Save Max Files Per Page</Button>
+                        </Form>
+                    </Tab>
+                    <Tab eventKey={4}
                         title={
                             <>
                                 <TabTitleIcon>

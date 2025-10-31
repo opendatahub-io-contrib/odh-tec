@@ -11,6 +11,8 @@ import {
   updateHFConfig,
   getMaxConcurrentTransfers,
   updateMaxConcurrentTransfers,
+  getMaxFilesPerPage,
+  updateMaxFilesPerPage,
   getProxyConfig,
   updateProxyConfig,
   initializeS3Client,
@@ -197,6 +199,26 @@ export default async (fastify: FastifyInstance): Promise<void> => {
     const { maxConcurrentTransfers } = req.body as any;
     try {
       updateMaxConcurrentTransfers(maxConcurrentTransfers);
+      reply.send({ message: 'Settings updated successfully' });
+    } catch (error) {
+      console.error('Error updating settings', error);
+      reply.code(500).send({ error: error.name, message: error.message });
+    }
+  });
+
+  // Retrieve max files per page
+  fastify.get('/max-files-per-page', async (req: FastifyRequest, reply: FastifyReply) => {
+    logAccess(req);
+    const maxFilesPerPage = getMaxFilesPerPage();
+    reply.send({ maxFilesPerPage });
+  });
+
+  // Update max files per page
+  fastify.put('/max-files-per-page', async (req: FastifyRequest, reply: FastifyReply) => {
+    logAccess(req);
+    const { maxFilesPerPage } = req.body as any;
+    try {
+      updateMaxFilesPerPage(maxFilesPerPage);
       reply.send({ message: 'Settings updated successfully' });
     } catch (error) {
       console.error('Error updating settings', error);

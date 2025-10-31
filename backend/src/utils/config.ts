@@ -12,6 +12,7 @@ let endpoint = process.env.AWS_S3_ENDPOINT || '';
 let defaultBucket = process.env.AWS_S3_BUCKET || '';
 let hfToken = process.env.HF_TOKEN || '';
 let maxConcurrentTransfers = parseInt(process.env.MAX_CONCURRENT_TRANSFERS || '2', 10);
+let maxFilesPerPage = parseInt(process.env.MAX_FILES_PER_PAGE || '100', 10);
 let httpProxy = process.env.HTTP_PROXY || '';
 let httpsProxy = process.env.HTTPS_PROXY || '';
 
@@ -132,6 +133,14 @@ export const getMaxConcurrentTransfers = (): number => {
 
 export const updateMaxConcurrentTransfers = (newMaxConcurrentTransfers: number): void => {
   maxConcurrentTransfers = newMaxConcurrentTransfers;
+};
+
+export const getMaxFilesPerPage = (): number => {
+  return maxFilesPerPage;
+};
+
+export const updateMaxFilesPerPage = (newMaxFilesPerPage: number): void => {
+  maxFilesPerPage = newMaxFilesPerPage;
 };
 
 /**

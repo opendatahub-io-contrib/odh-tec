@@ -116,8 +116,8 @@ export function validateContinuationToken(token: string | undefined): string | n
     return 'Continuation token length is invalid.';
   }
 
-  // S3 tokens are base64-like (standard base64 + URL-safe variants)
-  if (!/^[A-Za-z0-9+/=\-_]+$/.test(token)) {
+  // S3 tokens are base64-like (standard base64 + URL-safe variants + dots for S3-compatible systems like Ceph)
+  if (!/^[A-Za-z0-9+/=\-_.]+$/.test(token)) {
     return 'Continuation token format is invalid.';
   }
 

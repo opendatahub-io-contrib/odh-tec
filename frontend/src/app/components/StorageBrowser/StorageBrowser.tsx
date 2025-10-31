@@ -92,6 +92,7 @@ const StorageBrowser: React.FC<StorageBrowserProps> = () => {
 
   // Limit the number of concurrent file uploads or transfers
   const [maxConcurrentTransfers, setMaxConcurrentTransfers] = React.useState(2);
+  const [maxFilesPerPage, setMaxFilesPerPage] = React.useState(100);
 
   React.useEffect(() => {
     axios
@@ -110,6 +111,27 @@ const StorageBrowser: React.FC<StorageBrowserProps> = () => {
           variant: 'warning',
           title: 'Using Default Settings',
           description: 'Failed to fetch max concurrent transfers setting. Using default value (2).',
+        });
+      });
+  }, []);
+
+  React.useEffect(() => {
+    axios
+      .get(`${config.backend_api_url}/settings/max-files-per-page`)
+      .then((response) => {
+        const { maxFilesPerPage } = response.data;
+        if (maxFilesPerPage !== undefined) {
+          setMaxFilesPerPage(maxFilesPerPage);
+        }
+      })
+      .catch((error) => {
+        console.error(error);
+        // Fall back to default value
+        setMaxFilesPerPage(100);
+        Emitter.emit('notification', {
+          variant: 'warning',
+          title: 'Using Default Settings',
+          description: 'Failed to fetch max files per page setting. Using default value (100).',
         });
       });
   }, []);
@@ -361,7 +383,7 @@ const StorageBrowser: React.FC<StorageBrowserProps> = () => {
           // S3: Use continuation token pagination
           response = await storageService.listFiles(location.id, path, {
             continuationToken: continuationToken || undefined,
-            maxKeys: searchParams ? undefined : 1000,
+            maxKeys: searchParams ? undefined : maxFilesPerPage,
             q: searchParams?.q,
             mode: searchParams?.mode,
           });
@@ -374,7 +396,7 @@ const StorageBrowser: React.FC<StorageBrowserProps> = () => {
           const offset = appendResults ? paginationOffset : 0;
 
           response = await storageService.listFiles(location.id, path, {
-            limit: 1000,
+            limit: maxFilesPerPage,
             offset,
             q: searchParams?.q,
             mode: searchParams?.mode,
